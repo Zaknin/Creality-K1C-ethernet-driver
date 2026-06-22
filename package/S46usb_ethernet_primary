@@ -1,0 +1,48 @@
+#!/bin/sh
+
+PACKAGE_DIR=/usr/data/k1c-usb-ethernet/vendor-native-known-good
+LOG_FILE="$PACKAGE_DIR/primary-ethernet-boot.log"
+
+log() {
+  printf '%s boot-primary[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$$" "$*" >> "$LOG_FILE"
+}
+
+start_background() {
+  (
+    i=0
+    while [ "$i" -lt 45 ]; do
+      if lsusb 2>/dev/null | grep -qi '0b95:1790'; then
+        log "ASIX device visible after ${i}s"
+        "$PACKAGE_DIR/start-primary-ethernet.sh" >> "$LOG_FILE" 2>&1
+        log "start-primary rc=$?"
+        exit 0
+      fi
+      sleep 1
+      i=$((i + 1))
+    done
+    log "ASIX device not visible within bounded wait"
+  ) &
+  log "background starter pid=$!"
+}
+
+case "${1:-start}" in
+  start)
+    log "start requested"
+    start_background
+    ;;
+  stop)
+    log "stop requested"
+    "$PACKAGE_DIR/stop-primary-ethernet.sh" >> "$LOG_FILE" 2>&1
+    log "stop complete"
+    ;;
+  restart)
+    "$0" stop
+    "$0" start
+    ;;
+  *)
+    echo "usage: $0 {start|stop|restart}" >&2
+    exit 2
+    ;;
+esac
+
+exit 0

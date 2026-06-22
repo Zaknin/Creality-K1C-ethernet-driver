@@ -1,0 +1,208 @@
+--- a/usbnet.c
++++ b/usbnet.c
+@@ -46,9 +46,94 @@
+ #include <linux/slab.h>
+ #include <linux/kernel.h>
+ #include <linux/pm_runtime.h>
++#include <linux/proc_fs.h>
++#include <linux/seq_file.h>
+ 
+ #define DRIVER_VERSION		"22-Aug-2005"
+ 
++#ifndef PACKET_BROADCAST
++#define PACKET_BROADCAST	1
++#endif
++#ifndef PACKET_MULTICAST
++#define PACKET_MULTICAST	2
++#endif
++#ifndef PACKET_OTHERHOST
++#define PACKET_OTHERHOST	3
++#endif
++
++enum usbnet_diag_counter {
++	USBNET_DIAG_RX_SKB_ALLOC_FAIL,
++	USBNET_DIAG_RX_SUBMIT_ENOMEM,
++	USBNET_DIAG_RX_SUBMIT_OTHER_ERR,
++	USBNET_DIAG_RX_SUBMIT_OK,
++	USBNET_DIAG_SKB_RETURN_CALLS,
++	USBNET_DIAG_NETIF_RX_NON_SUCCESS,
++	USBNET_DIAG_NETIF_RX_SUCCESS,
++	USBNET_DIAG_NETIF_RX_DROP,
++	USBNET_DIAG_NETIF_RX_CN,
++	USBNET_DIAG_NETIF_RX_OTHER,
++	USBNET_DIAG_ETH_IPV4,
++	USBNET_DIAG_ETH_ARP,
++	USBNET_DIAG_ETH_IPV6,
++	USBNET_DIAG_ETH_OTHER,
++	USBNET_DIAG_PKT_OTHERHOST,
++	USBNET_DIAG_PKT_BROADCAST,
++	USBNET_DIAG_PKT_MULTICAST,
++	USBNET_DIAG_MAX
++};
++
++static atomic_t usbnet_diag_counters[USBNET_DIAG_MAX];
++static struct proc_dir_entry *usbnet_diag_proc;
++
++static const char * const usbnet_diag_names[USBNET_DIAG_MAX] = {
++	[USBNET_DIAG_RX_SKB_ALLOC_FAIL] = "rx_skb_alloc_fail",
++	[USBNET_DIAG_RX_SUBMIT_ENOMEM] = "rx_submit_urb_enomem",
++	[USBNET_DIAG_RX_SUBMIT_OTHER_ERR] = "rx_submit_urb_other_err",
++	[USBNET_DIAG_RX_SUBMIT_OK] = "rx_submit_urb_ok",
++	[USBNET_DIAG_SKB_RETURN_CALLS] = "usbnet_skb_return_calls",
++	[USBNET_DIAG_NETIF_RX_NON_SUCCESS] = "netif_rx_non_success",
++	[USBNET_DIAG_NETIF_RX_SUCCESS] = "netif_rx_success",
++	[USBNET_DIAG_NETIF_RX_DROP] = "netif_rx_drop",
++	[USBNET_DIAG_NETIF_RX_CN] = "netif_rx_congestion",
++	[USBNET_DIAG_NETIF_RX_OTHER] = "netif_rx_other_status",
++	[USBNET_DIAG_ETH_IPV4] = "eth_ipv4",
++	[USBNET_DIAG_ETH_ARP] = "eth_arp",
++	[USBNET_DIAG_ETH_IPV6] = "eth_ipv6",
++	[USBNET_DIAG_ETH_OTHER] = "eth_other",
++	[USBNET_DIAG_PKT_OTHERHOST] = "packet_otherhost",
++	[USBNET_DIAG_PKT_BROADCAST] = "packet_broadcast",
++	[USBNET_DIAG_PKT_MULTICAST] = "packet_multicast",
++};
++
++static inline void usbnet_diag_inc(enum usbnet_diag_counter counter)
++{
++	atomic_inc(&usbnet_diag_counters[counter]);
++}
++
++static int usbnet_diag_show(struct seq_file *m, void *v)
++{
++	int i;
++
++	for (i = 0; i < USBNET_DIAG_MAX; i++)
++		seq_printf(m, "%s=%d\n", usbnet_diag_names[i],
++			   atomic_read(&usbnet_diag_counters[i]));
++
++	return 0;
++}
++
++static int usbnet_diag_open(struct inode *inode, struct file *file)
++{
++	return single_open(file, usbnet_diag_show, NULL);
++}
++
++static const struct file_operations usbnet_diag_fops = {
++	.owner = THIS_MODULE,
++	.open = usbnet_diag_open,
++	.read = seq_read,
++	.llseek = seq_lseek,
++	.release = single_release,
++};
++
+ 
+ /*-------------------------------------------------------------------------*/
+ 
+@@ -327,6 +412,7 @@
+ 	skb->protocol = eth_type_trans (skb, dev->net);
+ 	dev->net->stats.rx_packets++;
+ 	dev->net->stats.rx_bytes += skb->len;
++	usbnet_diag_inc(USBNET_DIAG_SKB_RETURN_CALLS);
+ 
+ 	netif_dbg(dev, rx_status, dev->net, "< rx, len %zu, type 0x%x\n",
+ 		  skb->len + sizeof (struct ethhdr), skb->protocol);
+@@ -335,10 +421,43 @@
+ 	if (skb_defer_rx_timestamp(skb))
+ 		return;
+ 
++	switch (skb->protocol) {
++	case htons(ETH_P_IP):
++		usbnet_diag_inc(USBNET_DIAG_ETH_IPV4);
++		break;
++	case htons(ETH_P_ARP):
++		usbnet_diag_inc(USBNET_DIAG_ETH_ARP);
++		break;
++	case htons(ETH_P_IPV6):
++		usbnet_diag_inc(USBNET_DIAG_ETH_IPV6);
++		break;
++	default:
++		usbnet_diag_inc(USBNET_DIAG_ETH_OTHER);
++		break;
++	}
++	if (skb->pkt_type == PACKET_OTHERHOST)
++		usbnet_diag_inc(USBNET_DIAG_PKT_OTHERHOST);
++	if (skb->pkt_type == PACKET_BROADCAST)
++		usbnet_diag_inc(USBNET_DIAG_PKT_BROADCAST);
++	if (skb->pkt_type == PACKET_MULTICAST)
++		usbnet_diag_inc(USBNET_DIAG_PKT_MULTICAST);
++
+ 	status = netif_rx (skb);
+-	if (status != NET_RX_SUCCESS)
++	if (status == NET_RX_SUCCESS)
++		usbnet_diag_inc(USBNET_DIAG_NETIF_RX_SUCCESS);
++	else {
++		usbnet_diag_inc(USBNET_DIAG_NETIF_RX_NON_SUCCESS);
++		if (status == NET_RX_DROP)
++			usbnet_diag_inc(USBNET_DIAG_NETIF_RX_DROP);
++#ifdef NET_RX_CN
++		else if (status == NET_RX_CN)
++			usbnet_diag_inc(USBNET_DIAG_NETIF_RX_CN);
++#endif
++		else
++			usbnet_diag_inc(USBNET_DIAG_NETIF_RX_OTHER);
+ 		netif_dbg(dev, rx_err, dev->net,
+ 			  "netif_rx status %d\n", status);
++	}
+ }
+ EXPORT_SYMBOL_GPL(usbnet_skb_return);
+ 
+@@ -481,6 +600,7 @@
+ 
+ 	skb = __netdev_alloc_skb_ip_align(dev->net, size, flags);
+ 	if (!skb) {
++		usbnet_diag_inc(USBNET_DIAG_RX_SKB_ALLOC_FAIL);
+ 		netif_dbg(dev, rx_err, dev->net, "no rx skb\n");
+ 		usbnet_defer_kevent (dev, EVENT_RX_MEMORY);
+ 		usb_free_urb (urb);
+@@ -503,24 +623,30 @@
+ 	    !test_bit (EVENT_DEV_ASLEEP, &dev->flags)) {
+ 		switch (retval = usb_submit_urb (urb, GFP_ATOMIC)) {
+ 		case -EPIPE:
++			usbnet_diag_inc(USBNET_DIAG_RX_SUBMIT_OTHER_ERR);
+ 			usbnet_defer_kevent (dev, EVENT_RX_HALT);
+ 			break;
+ 		case -ENOMEM:
++			usbnet_diag_inc(USBNET_DIAG_RX_SUBMIT_ENOMEM);
+ 			usbnet_defer_kevent (dev, EVENT_RX_MEMORY);
+ 			break;
+ 		case -ENODEV:
++			usbnet_diag_inc(USBNET_DIAG_RX_SUBMIT_OTHER_ERR);
+ 			netif_dbg(dev, ifdown, dev->net, "device gone\n");
+ 			netif_device_detach (dev->net);
+ 			break;
+ 		case -EHOSTUNREACH:
++			usbnet_diag_inc(USBNET_DIAG_RX_SUBMIT_OTHER_ERR);
+ 			retval = -ENOLINK;
+ 			break;
+ 		default:
++			usbnet_diag_inc(USBNET_DIAG_RX_SUBMIT_OTHER_ERR);
+ 			netif_dbg(dev, rx_err, dev->net,
+ 				  "rx submit, %d\n", retval);
+ 			tasklet_schedule (&dev->bh);
+ 			break;
+ 		case 0:
++			usbnet_diag_inc(USBNET_DIAG_RX_SUBMIT_OK);
+ 			__usbnet_queue_skb(&dev->rxq, skb, rx_start);
+ 		}
+ 	} else {
+@@ -2254,12 +2380,18 @@
+ 		FIELD_SIZEOF(struct sk_buff, cb) < sizeof(struct skb_data));
+ 
+ 	eth_random_addr(node_id);
++	usbnet_diag_proc = proc_create("usbnet_diag", 0444, NULL,
++				       &usbnet_diag_fops);
++	if (!usbnet_diag_proc)
++		return -ENOMEM;
++
+ 	return 0;
+ }
+ module_init(usbnet_init);
+ 
+ static void __exit usbnet_exit(void)
+ {
++	remove_proc_entry("usbnet_diag", NULL);
+ }
+ module_exit(usbnet_exit);
+ 

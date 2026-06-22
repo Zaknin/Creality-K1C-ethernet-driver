@@ -1,0 +1,14 @@
+qualification_summary=see ../RELEASE-QUALIFICATION.md
+
+evidence_classes:
+- vendor-native build hash verification
+- manual bind/open/close lifecycle test
+- carrier and no-op DHCP packet-exchange test
+- production package lifecycle load/status/stop test
+- Ethernet-primary/Wi-Fi-fallback manual validation
+- unattended boot integration acceptance test
+- isolated 128 MiB bidirectional IPv4 transfer test
+- final diagnostic 64 MiB bidirectional IPv4 transfer test
+
+privacy_note:
+Raw lab evidence contained local addresses, usernames, hostnames, and filesystem paths. It is not shipped in the public runtime package.

@@ -1,0 +1,6 @@
+toolchain=mips-linux-gnu-gcc
+toolchain_version=mips-linux-gnu-gcc (Ingenic Linux-Release5.0.2-Default(xburst2(fp64)+glibc2.29) 2021.09-06 11:15:35) 7.2.0
+target_arch=MIPS32_R2 32BIT little-endian
+kernel_target=4.4.94
+vendor_defconfig=x2000_module_base_linux_sfc_nand_defconfig
+vermagic=4.4.94 SMP preempt mod_unload MIPS32_R2 32BIT

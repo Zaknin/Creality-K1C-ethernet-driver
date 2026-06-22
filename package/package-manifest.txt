@@ -1,0 +1,16 @@
+package=k1c-usb-ethernet
+version=1.0.0
+install_location=/usr/data/k1c-usb-ethernet/vendor-native-known-good
+boot_hook=/etc/init.d/S46usb_ethernet_primary
+expected_kernel=4.4.94
+adapter_usb_id=0b95:1790
+adapter_name=ASIX AX88179/AX88179A USB Ethernet in CDC-NCM mode
+modules=mii.ko usbnet.ko cdc_ncm.ko
+primary_ethernet_script=start-primary-ethernet.sh
+fallback_stop_script=stop-primary-ethernet.sh
+disable_boot_command=/usr/data/k1c-usb-ethernet/vendor-native-known-good/disable-primary-ethernet-boot.sh
+policy_routing=unsupported_on_qualified_kernel
+routing_mode=dhcp_with_explicit_route_metrics
+ethernet_metric=50
+wifi_fallback_metric=300
+public_release_verdict=GO_qualified_for_explicit_K1C_firmware_kernel_ABI
