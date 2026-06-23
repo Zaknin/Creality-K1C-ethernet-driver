@@ -6,16 +6,19 @@ import sys
 from pathlib import Path
 
 BINARY_SUFFIXES = {
-    ".ko", ".o", ".a", ".so", ".elf", ".bin", ".img", ".fw", ".dtb", ".dts.o"
+    ".ko", ".o", ".a", ".so", ".elf", ".bin", ".img", ".fw", ".dtb", ".dts.o",
+    ".bz2", ".xz", ".tgz", ".tbz2", ".zip",
 }
 PRIVATE_DIRS = {
     ".git", "vendor", "sdk", "toolchain", "sysroot", "kernel", "firmware",
     "private", "evidence", "downloads", "build", "output", "package-work",
 }
+GENERATED_DIRS = {"output"}
 ARCHIVE_ALLOW = {
-    Path("dist/k1c-usb-ethernet-build-tools-v0.1.0.tar.gz"),
-    Path("dist/k1c-usb-ethernet-build-tools-v0.1.0.zip"),
+    Path("dist/creality-k1c-ethernet-driver-v0.1.1.tar.gz"),
+    Path("dist/creality-k1c-ethernet-driver-v0.1.1.zip"),
 }
+SOURCE_ARCHIVE = "ingenic-linux-kernel4.4.94-x2000_v12-v8.0-20220125.tar.bz2"
 WIN_USER_PATH = "C:" + "\\\\" + "Users" + "\\\\"
 PRIVATE_KEY_HEADER = "BEGIN " + r"(?:OPENSSH|RSA|DSA|EC)" + " " + "PRIVATE" + " " + "KEY"
 CREDENTIAL_WORDS = ["pass" + "word", "pass" + "wd", "tok" + "en", r"api[_-]?key", "sec" + "ret"]
@@ -46,9 +49,14 @@ def scan(root: Path) -> list[str]:
         parts = set(rp.parts)
         if ".git" in parts:
             continue
+        if rp.parts and rp.parts[0] in GENERATED_DIRS:
+            continue
         if parts & (PRIVATE_DIRS - {"output"}):
             errors.append(f"private directory present: {rp.as_posix()}")
         if rp in ARCHIVE_ALLOW or rp.as_posix() in {"dist/SHA256SUMS", "RELEASE-FILES.sha256"}:
+            continue
+        if path.name == SOURCE_ARCHIVE:
+            errors.append(f"forbidden vendor source archive: {rp.as_posix()}")
             continue
         if path.suffix in BINARY_SUFFIXES or path.name.endswith(".tar.gz"):
             errors.append(f"forbidden binary/module artifact: {rp.as_posix()}")

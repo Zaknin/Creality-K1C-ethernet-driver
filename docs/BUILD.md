@@ -23,7 +23,7 @@ You need:
 - `sh`, `make`, `find`, `sed`, `awk`, `grep`, `sort`, `sha256sum`, and `file`.
 - Optional tools for later checks: `modinfo` and `readelf`.
 
-The scripts do not download source, prepare the kernel tree, or install a compiler.
+The scripts do not download source, prepare the kernel tree, install an SDK, or install a compiler. Downloading and extracting the kernel source are explicit user actions. See [SOURCE-ACQUISITION.md](SOURCE-ACQUISITION.md).
 
 ## 3. Create `../k1c-build.env`
 
@@ -41,7 +41,7 @@ Example:
 ```sh
 ARCH=mips
 KERNEL_RELEASE=4.4.94
-KERNEL_DIR=/path/to/compatible/k1c-kernel
+KERNEL_DIR=/path/to/extracted/kernel/tree
 CROSS_COMPILE=/path/to/toolchain/bin/mips-linux-gnu-
 OUTPUT_DIR=output/modules
 BUILD_LOG_DIR=output/logs
@@ -56,10 +56,10 @@ BUILD_LOG_DIR=output/logs
 : Must be `4.4.94`. The checker looks for this value in `include/generated/utsrelease.h`.
 
 `KERNEL_DIR`
-: Path to the prepared compatible kernel tree.
+: Path to the prepared kernel tree containing `Makefile`, `drivers/net/mii.c`, `drivers/net/usb/usbnet.c`, and `drivers/net/usb/cdc_ncm.c`.
 
 `CROSS_COMPILE`
-: Compiler prefix. The script runs `${CROSS_COMPILE}gcc -dumpmachine` and expects the result to mention MIPS.
+: Compiler prefix. The script runs `${CROSS_COMPILE}gcc -dumpmachine` and expects the result to mention MIPS. The compiler is not supplied by this repository.
 
 `OUTPUT_DIR`
 : Where the finished modules are copied. Default in the example is `output/modules`.
@@ -166,7 +166,7 @@ tail -n 100 output/logs/build-modules.log
 : `CROSS_COMPILE` should be a prefix, not just a directory. For example: `/path/to/toolchain/bin/mips-linux-gnu-`.
 
 `prepared kernel marker missing`
-: Prepare the kernel tree outside this repository using the process for your source tree.
+: Prepare the kernel tree outside this repository using the process for your source tree. Merely extracting a source archive may not create generated headers or `Module.symvers`.
 
 `Module.symvers missing`
 : The tree is not ready for module builds, or symbol versioning data has not been generated.

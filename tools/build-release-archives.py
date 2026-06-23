@@ -7,12 +7,28 @@ import tarfile
 import zipfile
 from pathlib import Path
 
-PROJECT = "k1c-usb-ethernet-build-tools"
-VERSION = "0.1.0"
+PROJECT = "creality-k1c-ethernet-driver"
+VERSION = (Path(__file__).resolve().parents[1] / "VERSION").read_text(encoding="utf-8").strip()
 PREFIX = f"{PROJECT}-v{VERSION}"
 EPOCH = 1704067200
 ZIP_DT = (2024, 1, 1, 0, 0, 0)
-EXCLUDE_DIRS = {".git", "dist", "output", "build", "package-work", "downloads", "vendor", "sdk", "toolchain", "kernel", "private", "evidence"}
+EXCLUDE_DIRS = {
+    ".git",
+    ".github",
+    "dist",
+    "output",
+    "build",
+    "package-work",
+    "downloads",
+    "vendor",
+    "sdk",
+    "toolchain",
+    "kernel",
+    "sysroot",
+    "firmware",
+    "private",
+    "evidence",
+}
 EXCLUDE_FILES = {"RELEASE-FILES.sha256"}
 
 
@@ -100,4 +116,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -1,5 +1,7 @@
 # Creality K1C Ethernet Driver
 
+Current project version: `0.1.1`.
+
 This repository helps you build and install USB Ethernet support for a Creality K1C printer. It does not contain ready-made driver files. It gives you scripts to build, check, package, upload, install, test, disable, and remove the Ethernet setup.
 
 This repository does not include ready-to-install kernel modules. You must build `mii.ko`, `usbnet.ko`, and `cdc_ncm.ko` from a compatible Creality K1C kernel source tree before you can install Ethernet support.
@@ -19,6 +21,8 @@ You need:
 - A compatible MIPS cross-compiler.
 - A USB Ethernet adapter supported by `cdc_ncm`.
 - The printer still connected through Wi-Fi during the first install and tests.
+
+The known source package documented for this project is `ingenic-linux-kernel4.4.94-x2000_v12-v8.0-20220125.tar.bz2`. It must be downloaded separately from the known Ingenic Halley5/X2000 Baidu folder, and you must choose that exact filename from the folder. This repository and the GitHub Releases page do not include the archive, an SDK, or a compiler. See [docs/SOURCE-ACQUISITION.md](docs/SOURCE-ACQUISITION.md) before building.
 
 Keep Wi-Fi working until Ethernet has been tested. The install step leaves automatic startup disabled so a bad Ethernet setup is less likely to lock you out.
 
@@ -49,6 +53,8 @@ Do not run `scripts/lib.sh` or `runtime/common.sh` directly. They are helper fil
 
 Run these commands on the Linux or WSL build machine.
 
+Download project release archives from the [GitHub Releases page](https://github.com/Zaknin/Creality-K1C-ethernet-driver/releases). Generated release archives are not stored in the Git branch.
+
 1. Clone the repository.
 
    ```sh
@@ -68,7 +74,7 @@ Run these commands on the Linux or WSL build machine.
    ```sh
    ARCH=mips
    KERNEL_RELEASE=4.4.94
-   KERNEL_DIR=/path/to/compatible/k1c-kernel
+   KERNEL_DIR=/path/to/extracted/kernel/tree
    CROSS_COMPILE=/path/to/toolchain/bin/mips-linux-gnu-
    OUTPUT_DIR=output/modules
    BUILD_LOG_DIR=output/logs
@@ -294,3 +300,12 @@ Read [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for symptom-based fixes.
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md): every runtime setting in `config/runtime.conf.example`.
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): fixes organized by symptom.
 - [docs/UNINSTALL.md](docs/UNINSTALL.md): stop, disable, uninstall, and local cleanup commands.
+
+## License
+
+The original scripts, tools, tests, and documentation in this repository are
+released under the [MIT License](LICENSE).
+
+Third-party software, kernel source, SDK files, toolchains, and locally built
+kernel modules are not covered by this project license. They remain subject to
+their own licenses and distribution terms.
