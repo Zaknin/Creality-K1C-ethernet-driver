@@ -4,10 +4,30 @@ ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 . "$ROOT/scripts/lib.sh"
 
 ENV_FILE=
+usage() {
+  cat <<'EOF'
+Build mii.ko, usbnet.ko, and cdc_ncm.ko.
+
+Usage:
+  scripts/build-modules.sh --env ../k1c-build.env
+
+Required:
+  --env FILE    Build config copied from config/build.env.example.
+
+Outputs:
+  output/modules/mii.ko
+  output/modules/usbnet.ko
+  output/modules/cdc_ncm.ko
+  output/logs/build-modules.log
+
+Safety:
+  Builds only the three expected modules and copies them to output/modules/.
+EOF
+}
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --env) ENV_FILE=${2:-}; shift 2 ;;
-    -h|--help) echo "usage: $0 --env build.env"; exit 0 ;;
+    -h|--help) usage; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done

@@ -14,8 +14,8 @@ Observed qualification checks:
 
 - Shell syntax: pass.
 - ShellCheck: pass with official `shellcheck-v0.10.0.linux.x86_64.tar.xz` temporary binary; computed asset SHA-256 `6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87`.
-- no binary artifacts: pass, excluding the intended release tar/zip archives.
-- no SDK/source/toolchain/sysroot/firmware artifacts: pass.
+- no binary files: pass, excluding the intended release tar/zip archives.
+- no SDK/source/toolchain/sysroot/firmware files: pass.
 - privacy scan: pass.
 - deterministic tar and zip archives: pass.
 - tar/zip parity and no embedded `dist/`: pass.
@@ -24,4 +24,4 @@ Observed qualification checks:
 - Git object scan: pass.
 - clean worktree: required after final commit and tag.
 
-Known limitation: source compatibility is heuristic unless the user can prove the exact vendor source basis independently.
+Known limitation: source compatibility is heuristic unless the user can prove that the source tree matches the printer.

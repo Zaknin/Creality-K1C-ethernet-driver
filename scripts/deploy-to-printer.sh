@@ -6,12 +6,29 @@ ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 HOST=
 PACKAGE=
 REMOTE_DIR=/tmp/k1c-usb-ethernet-local-stage
+usage() {
+  cat <<'EOF'
+Upload the local package to the printer over SSH.
+
+Usage:
+  scripts/deploy-to-printer.sh --host "$PRINTER_HOST" --package output/package/k1c-usb-ethernet-local.tar.gz
+
+Options:
+  --host HOST        SSH target, for example root@PRINTER_IP.
+  --package FILE     Local package created by package-local-build.sh.
+  --remote-dir DIR   Remote staging directory. Default: /tmp/k1c-usb-ethernet-local-stage.
+
+Safety:
+  Uploads and verifies the package checksum only. It does not install anything
+  and does not enable boot startup.
+EOF
+}
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --host) HOST=${2:-}; shift 2 ;;
     --package) PACKAGE=${2:-}; shift 2 ;;
     --remote-dir) REMOTE_DIR=${2:-}; shift 2 ;;
-    -h|--help) echo "usage: $0 --host root@PRINTER_ADDRESS --package output/package/k1c-usb-ethernet-local.tar.gz"; exit 0 ;;
+    -h|--help) usage; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done

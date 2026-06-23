@@ -4,10 +4,31 @@ ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 . "$ROOT/scripts/lib.sh"
 
 ENV_FILE=
+usage() {
+  cat <<'EOF'
+Check the build machine, kernel tree, and compiler.
+
+Usage:
+  scripts/check-environment.sh --env ../k1c-build.env
+
+Required:
+  --env FILE    Build config copied from config/build.env.example.
+
+Checks:
+  - required POSIX tools
+  - ARCH=mips
+  - KERNEL_RELEASE=4.4.94
+  - CROSS_COMPILE points to a MIPS gcc
+  - KERNEL_DIR has prepared-kernel markers and Module.symvers
+
+Safety:
+  This script does not prepare, download, or modify the kernel tree.
+EOF
+}
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --env) ENV_FILE=${2:-}; shift 2 ;;
-    -h|--help) echo "usage: $0 --env build.env"; exit 0 ;;
+    -h|--help) usage; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -45,4 +66,3 @@ if ! grep -R "4.4.94" "$KERNEL_DIR/include/generated/utsrelease.h" >/dev/null 2>
 fi
 
 note "environment ok"
-

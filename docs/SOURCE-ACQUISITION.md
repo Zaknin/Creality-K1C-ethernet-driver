@@ -1,14 +1,40 @@
 # Source Acquisition
 
-Users must supply their own legally obtained vendor kernel source and MIPS toolchain. This project intentionally provides no SDK download URL and no private source hash.
+You need a kernel source tree that matches the printer closely enough to build loadable modules. Ordinary upstream Linux `4.4.94` may not match the K1C. Vendor patches, kernel configuration, exported symbols, compiler ABI, and endianness can all affect whether a module loads.
 
-The target runtime observed for this toolset is a Linux `4.4.94` MIPS printer kernel family. That version string alone is not enough to prove compatibility. Kernel configuration, exported symbols, module layout, compiler ABI, endianness, and vendor patches can all affect loadability.
+This repository cannot provide the SDK, vendor source, firmware, or a compiler. It also does not link to private or unofficial SDK downloads.
 
-Use `scripts/inspect-kernel-tree.sh` to classify a candidate tree as:
+## What The Scripts Check
 
-- `LIKELY`: expected version markers and module source paths are present.
-- `UNCONFIRMED`: some expected markers are missing; manual vendor provenance review is needed.
-- `INCOMPATIBLE`: obvious architecture, version, or layout mismatch.
+`scripts/check-environment.sh` expects a prepared tree with:
 
-The script is a heuristic and does not claim exact source identity.
+```text
+Makefile
+include/generated/utsrelease.h
+include/generated/autoconf.h
+Module.symvers
+```
 
+`scripts/inspect-kernel-tree.sh` looks for:
+
+```text
+Makefile
+include/generated/utsrelease.h
+drivers/net/mii.c
+drivers/net/usb/usbnet.c
+drivers/net/usb/cdc_ncm.c
+```
+
+The `utsrelease.h` file must contain `4.4.94` for the current scripts.
+
+## About `prepare-kernel.sh`
+
+`scripts/prepare-kernel.sh` does not prepare a kernel tree. It prints a guard message and exits. That is deliberate. The repository cannot safely guess how your vendor tree should be configured or prepared.
+
+Prepare the kernel tree outside this repository, then run:
+
+```sh
+scripts/check-environment.sh --env ../k1c-build.env
+```
+
+If you are unsure whether a tree is compatible, stop at `UNCONFIRMED` or `INCOMPATIBLE` and inspect the source before building modules.

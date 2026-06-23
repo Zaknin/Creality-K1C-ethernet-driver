@@ -5,11 +5,31 @@ ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
 MODULES_DIR=output/modules
 OUT_DIR=output/package
+usage() {
+  cat <<'EOF'
+Create the local printer upload package.
+
+Usage:
+  scripts/package-local-build.sh --modules-dir output/modules --out output/package
+
+Options:
+  --modules-dir DIR    Directory containing the three verified .ko files.
+  --out DIR            Output directory. Default: output/package.
+
+Output:
+  output/package/k1c-usb-ethernet-local.tar.gz
+  output/package/SHA256SUMS
+
+Safety:
+  Verifies modules first. The generated package is local output and should not
+  be committed to Git.
+EOF
+}
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --modules-dir) MODULES_DIR=${2:-}; shift 2 ;;
     --out) OUT_DIR=${2:-}; shift 2 ;;
-    -h|--help) echo "usage: $0 --modules-dir output/modules --out output/package"; exit 0 ;;
+    -h|--help) usage; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -37,4 +57,3 @@ reject_private_text "$work"
 (cd "$work/.." && tar --sort=name --mtime='UTC 2024-01-01' --owner=0 --group=0 --numeric-owner -czf "$ROOT/$OUT_DIR/k1c-usb-ethernet-local.tar.gz" local-package)
 sha256sum "$OUT_DIR/k1c-usb-ethernet-local.tar.gz" >"$OUT_DIR/SHA256SUMS"
 note "local package written to $OUT_DIR/k1c-usb-ethernet-local.tar.gz"
-

@@ -5,11 +5,30 @@ ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
 HOST=
 REMOTE_DIR=/tmp/k1c-usb-ethernet-local-stage
+usage() {
+  cat <<'EOF'
+Install the uploaded package on the printer with boot disabled.
+
+Usage:
+  scripts/install-on-printer.sh --host "$PRINTER_HOST"
+
+Options:
+  --host HOST        SSH target, for example root@PRINTER_IP.
+  --remote-dir DIR   Remote staging directory. Default: /tmp/k1c-usb-ethernet-local-stage.
+
+Installs to:
+  /usr/data/k1c-usb-ethernet-local
+
+Safety:
+  Creates /etc/init.d/usb_ethernet_primary.disabled only. Automatic startup is
+  not enabled until scripts/enable-boot.sh is run.
+EOF
+}
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --host) HOST=${2:-}; shift 2 ;;
     --remote-dir) REMOTE_DIR=${2:-}; shift 2 ;;
-    -h|--help) echo "usage: $0 --host root@PRINTER_ADDRESS"; exit 0 ;;
+    -h|--help) usage; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done

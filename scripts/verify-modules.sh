@@ -6,12 +6,32 @@ ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 MODULES_DIR=output/modules
 KERNEL_RELEASE=4.4.94
 REPORT_DIR=output/verify
+usage() {
+  cat <<'EOF'
+Verify locally built kernel modules.
+
+Usage:
+  scripts/verify-modules.sh --modules-dir output/modules --kernel-release 4.4.94
+
+Options:
+  --modules-dir DIR       Directory containing mii.ko, usbnet.ko, cdc_ncm.ko.
+  --kernel-release REL    Expected kernel release. Default: 4.4.94.
+  --report-dir DIR        Report directory. Default: output/verify.
+
+Reports:
+  file, modinfo when available, readelf when available, SHA256SUMS, and
+  dependency-order.txt.
+
+Safety:
+  Rejects missing modules, extra .ko files, and obvious metadata mismatches.
+EOF
+}
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --modules-dir) MODULES_DIR=${2:-}; shift 2 ;;
     --kernel-release) KERNEL_RELEASE=${2:-}; shift 2 ;;
     --report-dir) REPORT_DIR=${2:-}; shift 2 ;;
-    -h|--help) echo "usage: $0 --modules-dir output/modules --kernel-release 4.4.94"; exit 0 ;;
+    -h|--help) usage; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -46,4 +66,3 @@ sha256sum "$MODULES_DIR"/mii.ko "$MODULES_DIR"/usbnet.ko "$MODULES_DIR"/cdc_ncm.
 printf '%s\n' mii usbnet cdc_ncm >"$REPORT_DIR/dependency-order.txt"
 reject_private_text "$REPORT_DIR"
 note "module verification ok"
-

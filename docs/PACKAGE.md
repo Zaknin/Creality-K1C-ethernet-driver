@@ -1,19 +1,42 @@
-# Package
+# Package The Local Build
 
-Run:
+Run packaging on the Linux or WSL build machine after verification passes.
 
 ```sh
-scripts/package-local-build.sh --modules-dir output/modules --out output/package
+scripts/package-local-build.sh \
+  --modules-dir output/modules \
+  --out output/package
 ```
 
-The generated package contains:
+The script verifies the modules again, then creates:
 
-- locally built `mii.ko`, `usbnet.ko`, `cdc_ncm.ko`
-- runtime scripts
-- generated metadata and hashes
-- an install script for the printer-side package
+```text
+output/package/k1c-usb-ethernet-local.tar.gz
+output/package/SHA256SUMS
+```
 
-The packaging script refuses missing modules, extra modules, private path fragments, non-module files in the module directory, and unsupported archive contents.
+## What The Package Contains
 
-This locally generated package is not distributed by the project.
+The archive contains:
 
+- Your locally built `mii.ko`, `usbnet.ko`, and `cdc_ncm.ko`.
+- The printer runtime scripts from `runtime/`.
+- `config.conf.example`.
+- `module-hashes.sha256`.
+- `package-manifest.txt`.
+- A short `README.txt`.
+
+This package is generated locally. Do not commit `output/` or `package-work/` to Git.
+
+## Check The Package Hash
+
+From the repository root:
+
+```sh
+cat output/package/SHA256SUMS
+sha256sum -c output/package/SHA256SUMS
+```
+
+The manifest uses the repository-relative path `output/package/k1c-usb-ethernet-local.tar.gz`, so run the check from the repository root.
+
+Continue with [INSTALL.md](INSTALL.md).

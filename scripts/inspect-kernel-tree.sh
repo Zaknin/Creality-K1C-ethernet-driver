@@ -4,10 +4,29 @@ ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 . "$ROOT/scripts/lib.sh"
 
 KERNEL_DIR=
+usage() {
+  cat <<'EOF'
+Inspect whether a kernel tree looks compatible.
+
+Usage:
+  scripts/inspect-kernel-tree.sh --kernel-dir /path/to/compatible/k1c-kernel
+
+Required:
+  --kernel-dir DIR    Prepared kernel tree to inspect.
+
+Results:
+  LIKELY        Expected files and version marker were found.
+  UNCONFIRMED   Some markers are missing. Stop and inspect the tree.
+  INCOMPATIBLE  Too many markers are missing. Do not continue.
+
+Safety:
+  This is a heuristic check. It does not prove exact source identity.
+EOF
+}
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --kernel-dir) KERNEL_DIR=${2:-}; shift 2 ;;
-    -h|--help) echo "usage: $0 --kernel-dir /path/to/vendor/kernel"; exit 0 ;;
+    -h|--help) usage; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -42,4 +61,3 @@ case "$verdict" in
   INCOMPATIBLE) exit 2 ;;
   *) exit 0 ;;
 esac
-

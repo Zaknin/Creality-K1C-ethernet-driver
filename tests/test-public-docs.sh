@@ -23,8 +23,7 @@ import sys
 
 readme = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
 required = [
-    "This repository does not include prebuilt kernel modules, a vendor SDK,\n"
-    "vendor kernel source, firmware, or a cross-toolchain.",
+    "This repository does not include ready-to-install kernel modules. You must build `mii.ko`, `usbnet.ko`, and `cdc_ncm.ko` from a compatible Creality K1C kernel source tree before you can install Ethernet support.",
     "This is an unofficial community project and is not affiliated with,\n"
     "endorsed by, or supported by Creality.",
 ]
