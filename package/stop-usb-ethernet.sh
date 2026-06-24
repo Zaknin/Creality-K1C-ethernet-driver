@@ -3,31 +3,29 @@ set -u
 
 PACKAGE_DIR="${PACKAGE_DIR:-$(CDPATH= cd "$(dirname "$0")" && pwd)}"
 LOG_FILE="${LOG_FILE:-$PACKAGE_DIR/usb-ethernet.log}"
+STATE_DIR="${STATE_DIR:-$PACKAGE_DIR/state}"
 
 log() {
   printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$LOG_FILE"
 }
 
 module_loaded() {
-  grep -q "^$1 " /proc/modules
+  grep -q "^$1 " /proc/modules 2>/dev/null
 }
 
 module_refcount() {
-  awk -v m="$1" '$1 == m { print $3 }' /proc/modules
+  awk -v m="$1" '$1 == m { print $3 }' /proc/modules 2>/dev/null
 }
 
 stop_usb0_dhcp() {
-  ps | while read -r pid user rest; do
-    case "$pid" in
-      ''|PID) continue ;;
-    esac
-    case "$rest" in
-      *udhcpc*usb0*|*dhclient*usb0*)
-        log "stopping usb0 DHCP client pid=$pid cmd=$rest"
-        kill "$pid" >/dev/null 2>&1 || true
-        ;;
-    esac
-  done
+  file="$STATE_DIR/udhcpc-usb0.pid"
+  [ -s "$file" ] || return 0
+  pid="$(cat "$file")"
+  if kill -0 "$pid" >/dev/null 2>&1; then
+    log "stopping package-owned usb0 DHCP client pid=$pid"
+    kill "$pid" >/dev/null 2>&1 || true
+  fi
+  rm -f "$file"
 }
 
 unload_if_safe() {

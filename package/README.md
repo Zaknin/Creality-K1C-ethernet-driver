@@ -28,6 +28,8 @@ The scripts intentionally refuse incompatible kernel/module combinations.
 - `status-usb-ethernet.sh`
 - `start-primary-ethernet.sh`
 - `stop-primary-ethernet.sh`
+- `primary-routing-lib.sh`
+- `usb0-route-monitor.sh`
 - `usb0-udhcpc-script.sh`
 - `ethernet-failover-status.sh`
 - `disable-primary-ethernet-boot.sh`
@@ -72,8 +74,35 @@ Inspect state:
 ```
 
 The qualified K1C kernel does not support `ip rule`, so this package uses route
-metrics. Ethernet uses metric `50` when carrier and DHCP are available. Wi-Fi
-is retained as fallback with metric `300`.
+metrics and explicit connected-subnet route reconciliation. Ethernet uses
+metric `50` when carrier and DHCP are available. Wi-Fi is retained as fallback
+with metric `300`.
+
+While USB Ethernet is active, the package:
+
+- removes stale or duplicate USB default routes and installs one USB default
+  route with metric `50`;
+- removes metricless or duplicate Wi-Fi default routes and installs one Wi-Fi
+  fallback default route with metric `300` when Wi-Fi is usable;
+- replaces conflicting same-subnet Wi-Fi connected routes with metric `300`;
+- keeps the USB connected route at metric `50`;
+- flushes the route cache after meaningful route changes when supported;
+- reconciles route drift caused by Wi-Fi reconnects without waiting for a USB
+  DHCP renewal.
+
+Useful manual route checks:
+
+```sh
+ip route
+ip route get 8.8.8.8
+ip route get "$gateway"
+ip route get "$gateway" from "$usb_ip"
+```
+
+The same-subnet model is intentionally simple: USB is the reliable primary path
+while healthy and Wi-Fi remains configured for fallback. The package does not
+claim full simultaneous symmetric access through both interface addresses on the
+same LAN because policy routing is unavailable on this kernel.
 
 ## Boot Integration
 

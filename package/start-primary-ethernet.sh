@@ -5,6 +5,7 @@ PACKAGE_DIR="${PACKAGE_DIR:-$(CDPATH= cd "$(dirname "$0")" && pwd)}"
 STATE_DIR="${STATE_DIR:-$PACKAGE_DIR/state}"
 LOG_FILE="${LOG_FILE:-$PACKAGE_DIR/primary-ethernet.log}"
 UDHCPC_SCRIPT="$PACKAGE_DIR/usb0-udhcpc-script.sh"
+MONITOR_SCRIPT="$PACKAGE_DIR/usb0-route-monitor.sh"
 PID_FILE="$STATE_DIR/udhcpc-usb0.pid"
 MONITOR_PID_FILE="$STATE_DIR/usb0-monitor.pid"
 
@@ -50,22 +51,8 @@ start_monitor() {
     log "monitor already running pid=$(cat "$MONITOR_PID_FILE")"
     return 0
   fi
-  (
-    last_carrier=""
-    while :; do
-      carrier="$(cat /sys/class/net/usb0/carrier 2>/dev/null || echo absent)"
-      if [ "$carrier" != "$last_carrier" ]; then
-        printf '%s monitor carrier=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$carrier" >> "$LOG_FILE"
-        last_carrier="$carrier"
-      fi
-      if [ "$carrier" != "1" ]; then
-        if [ -f "$STATE_DIR/ethernet.active" ]; then
-          "$UDHCPC_SCRIPT" leasefail
-        fi
-      fi
-      sleep 2
-    done
-  ) &
+  PACKAGE_DIR="$PACKAGE_DIR" STATE_DIR="$STATE_DIR" LOG_FILE="$LOG_FILE" \
+    nohup "$MONITOR_SCRIPT" >> "$LOG_FILE" 2>&1 &
   echo "$!" > "$MONITOR_PID_FILE"
   log "monitor started pid=$(cat "$MONITOR_PID_FILE")"
 }

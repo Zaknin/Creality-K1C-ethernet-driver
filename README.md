@@ -3,9 +3,9 @@
 Validated USB Ethernet support for the explicitly supported Creality K1C
 firmware/kernel ABI using the ASIX `0b95:1790` adapter in CDC-NCM mode.
 
-Final release verdict:
+Current release verdict:
 
-`GO -- qualified for public v1.0.0 on the explicitly supported K1C firmware/kernel ABI, with a documented historical non-blocking EVENT_RX_MEMORY warning.`
+`NO-GO pending physical-printer validation of the corrected v1.0.0 routing package.`
 
 ## Compatibility
 
@@ -57,6 +57,11 @@ runtime package or install archive.
 ## Qualification
 
 See `RELEASE-QUALIFICATION.md`.
+
+The corrected v1.0.0 package keeps USB Ethernet primary with route metric `50`
+and keeps Wi-Fi as fallback with route metric `300` while USB is healthy. It
+also reconciles same-subnet connected routes after Wi-Fi reconnects so route
+lookups from the USB address continue to select `usb0`.
 
 ## Source and License
 

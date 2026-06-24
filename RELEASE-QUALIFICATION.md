@@ -2,7 +2,30 @@
 
 ## Verdict
 
-`GO -- qualified for public v1.0.0 on the explicitly supported K1C firmware/kernel ABI, with a documented historical non-blocking EVENT_RX_MEMORY warning.`
+`NO-GO -- automated repository validation is required and physical-printer
+validation of the corrected routing package is still pending.`
+
+The original unpublished v1.0.0 qualification is superseded for runtime
+networking behavior. The module ABI evidence remains relevant, but three
+routing defects were later confirmed on the target printer:
+
+1. A firmware-created metricless Wi-Fi default route could remain after the
+   package installed the intended Wi-Fi fallback route with metric `300`.
+2. When `wlan0` and `usb0` were on the same subnet, metricless or duplicate
+   connected-subnet routes could cause lookups from the USB source address to
+   select `wlan0`.
+3. Firmware Wi-Fi DHCP/reconnect activity could recreate conflicting default
+   and connected routes after the USB DHCP event had already completed.
+
+The corrected implementation removes matching stale routes with bounded loops,
+installs exactly one desired USB default route with metric `50`, installs Wi-Fi
+fallback routes with metric `300` while USB is healthy, reconciles same-subnet
+connected routes, flushes the route cache when supported, and runs a low
+overhead monitor that mutates routes only after drift is detected.
+
+The brief Wi-Fi-off diagnostic that produced four lost pings is not accepted as
+proof of USB-only recovery because Wi-Fi was re-enabled shortly afterward. A
+controlled 60-second Wi-Fi-off test is still required.
 
 ## Supported Target
 
@@ -123,6 +146,11 @@ The package uses route metrics because the qualified kernel reports source
 policy routing as unsupported. Ethernet uses metric `50` after carrier and DHCP
 succeed. Wi-Fi remains configured as fallback with metric `300`.
 
+The corrected package also manages same-subnet connected routes. While USB is
+active, route lookups for the gateway or LAN peers from the USB source address
+must select `usb0`. Metricless Wi-Fi defaults and lower-priority-defeating
+Wi-Fi connected routes must not remain after reconciliation.
+
 Validation covered:
 
 - Ethernet DHCP lease acquisition
@@ -186,12 +214,61 @@ packet loss, or failure to recover after link interruption.
 The historical warning is not claimed to have been definitively caused by
 either RX skb allocation failure or RX URB submission failure.
 
+## Corrected v1.0.0 Regression Coverage
+
+Automated tests added for the corrected package:
+
+- firmware metricless Wi-Fi default repair;
+- duplicate default route collapse;
+- same-subnet connected route repair;
+- USB `bound`/`renew`/reconcile idempotence;
+- Wi-Fi disabled while USB remains healthy;
+- Wi-Fi route recreation after reconnect;
+- USB cable loss fallback;
+- USB reconnection restoration;
+- missing-route tolerance;
+- bounded command-failure handling;
+- stale lock recovery;
+- no-op reconciliation without route mutation;
+- boot hook install and marker-gated uninstall behavior.
+
+Repository tests do not modify the development machine's real routes. They use
+a mocked `ip` command, temporary state directories, a temporary resolver file,
+and mocked sysfs link state.
+
+## Required Physical Acceptance
+
+Physical-printer validation is pending unless separately recorded against the
+final corrected commit and rebuilt v1.0.0 assets. Required manual checks:
+
+```sh
+sh install.sh --enable-boot
+reboot
+/usr/data/k1c-usb-ethernet/vendor-native-known-good/ethernet-failover-status.sh
+ip route
+ip route get 8.8.8.8
+ip route get "$gateway"
+ip route get "$gateway" from "$usb_ip"
+```
+
+The physical acceptance sequence must include:
+
+- baseline boot with USB adapter and cable connected;
+- continuous ping, SSH, and web access through the USB IP;
+- Wi-Fi disabled for at least 60 seconds with USB access maintained;
+- Wi-Fi re-enabled with automatic route reconciliation;
+- USB cable loss causing Wi-Fi fallback;
+- USB reconnection restoring USB primary;
+- at least three repeated Wi-Fi off/on and USB disconnect/reconnect cycles;
+- verification that routes, monitor processes, DHCP processes, PID files,
+  state files, and DNS entries do not accumulate duplicates.
+
+Do not declare `GO` until these physical tests pass on the corrected package.
+
 ## Acceptance Rationale
 
-The release is accepted because the frozen production modules passed lifecycle,
-carrier, DHCP, isolated IPv4 transfer, boot, failover, recovery, DNS, and SSH
-validation on the explicit supported K1C firmware/kernel ABI. The final
-instrumented diagnostic run did not reproduce the historical warning and showed
-no RX allocation failures, URB `-ENOMEM`, RX submit errors, `netif_rx()` failures,
-softnet backlog drops, RX errors, stalls, lockups, DHCP failures, DNS failures,
-or recovery failures.
+The release is not currently accepted for public publication. The frozen
+production modules remain unchanged and keep their prior ABI evidence, but the
+corrected runtime routing package must pass automated validation and the
+physical-printer acceptance sequence above before the unpublished v1.0.0 release
+can move from `NO-GO` to `GO`.

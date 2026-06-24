@@ -4,7 +4,7 @@ set -eu
 VERSION=1.0.0
 EXPECTED_KERNEL=4.4.94
 DEFAULT_INSTALL_DIR=/usr/data/k1c-usb-ethernet/vendor-native-known-good
-BOOT_HOOK=/etc/init.d/S46usb_ethernet_primary
+BOOT_HOOK="${BOOT_HOOK:-/etc/init.d/S46usb_ethernet_primary}"
 
 usage() {
   cat <<EOF
@@ -53,15 +53,18 @@ fail() {
 
 mkdir -p "$dest"
 cp -R package/. "$dest/"
+echo "k1c-usb-ethernet v$VERSION package-owned install tree" > "$dest/.package-owned"
 ( cd "$dest" && sha256sum -c module-hashes.sha256 ) || fail "installed module hash verification failed"
 
 chmod 755 \
+  "$dest/primary-routing-lib.sh" \
   "$dest/start-usb-ethernet.sh" \
   "$dest/stop-usb-ethernet.sh" \
   "$dest/status-usb-ethernet.sh" \
   "$dest/uninstall-usb-ethernet.sh" \
   "$dest/start-primary-ethernet.sh" \
   "$dest/stop-primary-ethernet.sh" \
+  "$dest/usb0-route-monitor.sh" \
   "$dest/usb0-udhcpc-script.sh" \
   "$dest/ethernet-failover-status.sh" \
   "$dest/disable-primary-ethernet-boot.sh" \

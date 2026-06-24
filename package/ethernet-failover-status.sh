@@ -8,6 +8,8 @@ echo "PACKAGE=$PACKAGE_DIR"
 echo "POLICY_ROUTING=unavailable_on_this_kernel"
 echo "POLICY_ROUTING_PROBE=$(ip rule show 2>&1 | head -n 1)"
 echo "ROUTING_MODE=route_metrics_with_same_subnet_limitation"
+echo "USB_METRIC=50"
+echo "WIFI_FALLBACK_METRIC=300"
 echo
 echo "STATE"
 for f in wifi.ip wifi.gateway wifi.metric usb0.ip usb0.router usb0.metric ethernet.active udhcpc-usb0.pid usb0-monitor.pid; do
@@ -35,7 +37,13 @@ echo
 echo "ROUTE_GET"
 ip route get 8.8.8.8 2>&1 || true
 if [ -s "$STATE_DIR/usb0.ip" ]; then
-  ip route get 8.8.8.8 from "$(cat "$STATE_DIR/usb0.ip")" 2>&1 || true
+  usb_ip="$(cat "$STATE_DIR/usb0.ip")"
+  ip route get 8.8.8.8 from "$usb_ip" 2>&1 || true
+  if [ -s "$STATE_DIR/usb0.router" ]; then
+    usb_gw="$(cat "$STATE_DIR/usb0.router")"
+    ip route get "$usb_gw" 2>&1 || true
+    ip route get "$usb_gw" from "$usb_ip" 2>&1 || true
+  fi
 fi
 if [ -s "$STATE_DIR/wifi.ip" ]; then
   ip route get 8.8.8.8 from "$(cat "$STATE_DIR/wifi.ip")" 2>&1 || true
