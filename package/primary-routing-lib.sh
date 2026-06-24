@@ -220,46 +220,221 @@ connected_matching_count() {
     } END { print n + 0 }'
 }
 
+route_one_line() {
+  ip route show "$1" dev "$2" 2>/dev/null | sed -n '1p'
+}
+
+route_one_deletable_line() {
+  prefix="$1"
+  dev="$2"
+  category="$3"
+  if [ "$category" = "connected" ]; then
+    ip route show "$prefix" dev "$dev" 2>/dev/null |
+      awk -v dev="$dev" '
+        {
+          has_dev=0; has_proto=0; has_scope=0; has_src=0
+          for (i = 1; i <= NF; i++) {
+            if ($i == "dev" && $(i + 1) == dev) has_dev=1
+            if ($i == "proto" && $(i + 1) == "kernel") has_proto=1
+            if ($i == "scope" && $(i + 1) == "link") has_scope=1
+            if ($i == "src" && $(i + 1) != "") has_src=1
+          }
+          if (!(has_dev && has_proto && has_scope && has_src)) {
+            print
+            exit
+          }
+        }'
+  else
+    route_one_line "$prefix" "$dev"
+  fi
+}
+
+route_stderr_text() {
+  file="$1"
+  tr '\n' ' ' < "$file" 2>/dev/null | sed 's/[	 ][	 ]*/ /g; s/^ //; s/ $//'
+}
+
+is_kernel_connected_route_line() {
+  line="$1"
+  supplied_dev="$2"
+  printf '%s\n' "$line" | awk -v dev="$supplied_dev" '
+    {
+      has_dev=0; has_proto=0; has_scope=0; has_src=0
+      for (i = 1; i <= NF; i++) {
+        if ($i == "dev" && $(i + 1) == dev) has_dev=1
+        if ($i == "proto" && $(i + 1) == "kernel") has_proto=1
+        if ($i == "scope" && $(i + 1) == "link") has_scope=1
+        if ($i == "src" && $(i + 1) != "") has_src=1
+      }
+      exit (has_dev && has_proto && has_scope && has_src) ? 0 : 1
+    }'
+}
+
 delete_one_route_line() {
   line="$1"
+  supplied_dev="$2"
+  label="$3"
+  category="$4"
   set -- $line
   prefix="$1"
   dev=""
   via=""
   metric=""
+  proto=""
+  scope=""
+  src=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       via) via="$2"; shift 2 ;;
       dev) dev="$2"; shift 2 ;;
       metric) metric="$2"; shift 2 ;;
+      proto) proto="$2"; shift 2 ;;
+      scope) scope="$2"; shift 2 ;;
+      src) src="$2"; shift 2 ;;
       *) shift ;;
     esac
   done
+  [ -n "$dev" ] || dev="$supplied_dev"
   [ -n "$prefix" ] || return 1
   [ -n "$dev" ] || return 1
-  if [ -n "$via" ] && [ -n "$metric" ]; then
-    ip route del "$prefix" via "$via" dev "$dev" metric "$metric" 2>/dev/null
-  elif [ -n "$via" ]; then
-    ip route del "$prefix" via "$via" dev "$dev" 2>/dev/null
-  elif [ -n "$metric" ]; then
-    ip route del "$prefix" dev "$dev" metric "$metric" 2>/dev/null
-  else
-    ip route del "$prefix" dev "$dev" 2>/dev/null
+  set -- "$prefix"
+  [ -n "$via" ] && set -- "$@" via "$via"
+  set -- "$@" dev "$dev"
+  [ -n "$proto" ] && set -- "$@" proto "$proto"
+  [ -n "$scope" ] && set -- "$@" scope "$scope"
+  [ -n "$src" ] && set -- "$@" src "$src"
+  [ -n "$metric" ] && set -- "$@" metric "$metric"
+  err="$STATE_DIR/ip-route-del.$$"
+  ip route del "$@" 2>"$err"
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    rm -f "$err"
+    route_log "route_delete ok category=$category label=$label prefix=$prefix supplied_dev=$supplied_dev original=[$line]"
+    return 0
   fi
+  err_text="$(route_stderr_text "$err")"
+  rm -f "$err"
+  route_log "route_delete failed category=$category label=$label prefix=$prefix supplied_dev=$supplied_dev original=[$line] rc=$rc error=${err_text:-none}"
+  return "$rc"
+}
+
+change_connected_route_metric() {
+  prefix="$1"
+  dev="$2"
+  src="$3"
+  metric="$4"
+  label="$5"
+  original="$6"
+  err="$STATE_DIR/ip-route-change.$$"
+  ip route change "$prefix" dev "$dev" proto kernel scope link src "$src" metric "$metric" 2>"$err"
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    rm -f "$err"
+    route_log "route_change ok category=kernel-connected-exact label=$label prefix=$prefix supplied_dev=$dev original=[$original]"
+    return 0
+  fi
+  err_text="$(route_stderr_text "$err")"
+  route_log "route_change failed category=kernel-connected-exact label=$label prefix=$prefix supplied_dev=$dev original=[$original] rc=$rc error=${err_text:-none}"
+  ip route change "$prefix" dev "$dev" src "$src" metric "$metric" 2>"$err"
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    rm -f "$err"
+    route_log "route_change ok category=connected-less-specific label=$label prefix=$prefix supplied_dev=$dev original=[$original]"
+    return 0
+  fi
+  err_text="$(route_stderr_text "$err")"
+  rm -f "$err"
+  route_log "route_change failed category=connected-less-specific label=$label prefix=$prefix supplied_dev=$dev original=[$original] rc=$rc error=${err_text:-none}"
+  return "$rc"
+}
+
+replace_connected_route() {
+  prefix="$1"
+  dev="$2"
+  src="$3"
+  metric="$4"
+  label="$5"
+  err="$STATE_DIR/ip-route-replace.$$"
+  ip route replace "$prefix" dev "$dev" src "$src" metric "$metric" 2>"$err"
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    rm -f "$err"
+    route_log "route_replace ok category=package-connected label=$label prefix=$prefix supplied_dev=$dev src=$src metric=$metric"
+    return 0
+  fi
+  err_text="$(route_stderr_text "$err")"
+  rm -f "$err"
+  route_log "route_replace failed category=package-connected label=$label prefix=$prefix supplied_dev=$dev src=$src metric=$metric rc=$rc error=${err_text:-none}"
+  return "$rc"
+}
+
+replace_default_route() {
+  dev="$1"
+  gw="$2"
+  metric="$3"
+  label="$4"
+  err="$STATE_DIR/ip-route-default.$$"
+  ip route replace default via "$gw" dev "$dev" metric "$metric" 2>"$err"
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    rm -f "$err"
+    route_log "route_replace ok category=default label=$label prefix=default supplied_dev=$dev gw=$gw metric=$metric"
+    return 0
+  fi
+  err_text="$(route_stderr_text "$err")"
+  rm -f "$err"
+  route_log "route_replace failed category=default label=$label prefix=default supplied_dev=$dev gw=$gw metric=$metric rc=$rc error=${err_text:-none}"
+  return "$rc"
+}
+
+connected_route_verified() {
+  prefix="$1"
+  dev="$2"
+  src="$3"
+  metric="$4"
+  [ "$(connected_matching_count "$prefix" "$dev" "$src" "$metric")" = "1" ] || return 1
+  [ "$(connected_bad_count "$prefix" "$dev" "$metric")" = "0" ] || return 1
+  return 0
+}
+
+default_route_verified() {
+  dev="$1"
+  gw="$2"
+  metric="$3"
+  [ "$(matching_default_count "$dev" "$gw" "$metric")" = "1" ] || return 1
+  [ "$(stale_default_count "$dev" "$gw" "$metric")" = "0" ] || return 1
+  return 0
+}
+
+adjust_kernel_connected_routes() {
+  prefix="$1"
+  dev="$2"
+  src="$3"
+  metric="$4"
+  label="$5"
+  line="$(route_one_line "$prefix" "$dev")"
+  [ -n "$line" ] || return 0
+  if is_kernel_connected_route_line "$line" "$dev"; then
+    change_connected_route_metric "$prefix" "$dev" "$src" "$metric" "$label" "$line" || true
+  fi
+  return 0
 }
 
 remove_routes_for_prefix_dev() {
   prefix="$1"
   dev="$2"
   label="$3"
+  category="${4:-route}"
   i=0
   while [ "$i" -lt "$ROUTE_DELETE_MAX" ]; do
-    line="$(ip route show "$prefix" dev "$dev" 2>/dev/null | sed -n '1p')"
-    [ -n "$line" ] || return 0
-    if delete_one_route_line "$line"; then
-      route_log "removed $label route: $line"
-    else
-      route_log "failed removing $label route: $line"
+    line="$(route_one_deletable_line "$prefix" "$dev" "$category")"
+    if [ -z "$line" ]; then
+      kernel_line="$(route_one_line "$prefix" "$dev")"
+      [ -n "$kernel_line" ] && [ "$category" = "connected" ] && route_log "route_delete skipped category=kernel-connected label=$label prefix=$prefix supplied_dev=$dev original=[$kernel_line] disposition=tolerated"
+      return 0
+    fi
+    if ! delete_one_route_line "$line" "$dev" "$label" "$category"; then
+      route_log "route_delete incomplete category=$category label=$label prefix=$prefix supplied_dev=$dev original=[$line] disposition=verify-final-state"
       return 1
     fi
     i=$((i + 1))
@@ -273,13 +448,14 @@ install_default_once() {
   id_gw="$2"
   id_metric="$3"
   id_label="$4"
-  remove_routes_for_prefix_dev default "$id_dev" "$id_label default" || return 1
-  ip route replace default via "$id_gw" dev "$id_dev" metric "$id_metric" || {
-    route_log "failed installing $id_label default gw=$id_gw dev=$id_dev metric=$id_metric"
-    return 1
-  }
-  route_log "installed $id_label default gw=$id_gw dev=$id_dev metric=$id_metric"
-  return 0
+  remove_routes_for_prefix_dev default "$id_dev" "$id_label default" default || true
+  replace_default_route "$id_dev" "$id_gw" "$id_metric" "$id_label" || true
+  if default_route_verified "$id_dev" "$id_gw" "$id_metric"; then
+    route_log "installed $id_label default gw=$id_gw dev=$id_dev metric=$id_metric"
+    return 0
+  fi
+  route_log "default verification failed label=$id_label gw=$id_gw dev=$id_dev metric=$id_metric remaining=$(ip route show default dev "$id_dev" 2>/dev/null | tr '\n' ';')"
+  return 1
 }
 
 install_connected_once() {
@@ -288,13 +464,17 @@ install_connected_once() {
   ic_src="$3"
   ic_metric="$4"
   ic_label="$5"
-  remove_routes_for_prefix_dev "$ic_prefix" "$ic_dev" "$ic_label connected" || return 1
-  ip route replace "$ic_prefix" dev "$ic_dev" src "$ic_src" metric "$ic_metric" || {
-    route_log "failed installing $ic_label connected prefix=$ic_prefix src=$ic_src metric=$ic_metric"
-    return 1
-  }
-  route_log "installed $ic_label connected prefix=$ic_prefix src=$ic_src metric=$ic_metric"
-  return 0
+  adjust_kernel_connected_routes "$ic_prefix" "$ic_dev" "$ic_src" "$ic_metric" "$ic_label"
+  remove_routes_for_prefix_dev "$ic_prefix" "$ic_dev" "$ic_label connected" connected || true
+  if ! connected_route_verified "$ic_prefix" "$ic_dev" "$ic_src" "$ic_metric"; then
+    replace_connected_route "$ic_prefix" "$ic_dev" "$ic_src" "$ic_metric" "$ic_label" || true
+  fi
+  if connected_route_verified "$ic_prefix" "$ic_dev" "$ic_src" "$ic_metric"; then
+    route_log "installed $ic_label connected prefix=$ic_prefix src=$ic_src metric=$ic_metric"
+    return 0
+  fi
+  route_log "unsupported-target-routing label=$ic_label connected prefix=$ic_prefix dev=$ic_dev src=$ic_src metric=$ic_metric remaining=$(ip route show "$ic_prefix" dev "$ic_dev" 2>/dev/null | tr '\n' ';')"
+  return 1
 }
 
 flush_route_cache_if_changed() {
@@ -365,7 +545,18 @@ save_fallback_state() {
   [ -s "$STATE_DIR/wifi.gateway" ] || first_default_gw "$WIFI_IF" > "$STATE_DIR/wifi.gateway"
   [ -s "$STATE_DIR/wifi.ip" ] || iface_ipv4 "$WIFI_IF" > "$STATE_DIR/wifi.ip"
   [ -s "$STATE_DIR/wifi.prefix" ] || iface_prefix "$WIFI_IF" > "$STATE_DIR/wifi.prefix"
-  [ -f "$STATE_DIR/resolv.conf.wifi" ] || cp "$RESOLV_CONF" "$STATE_DIR/resolv.conf.wifi" 2>/dev/null || true
+  [ -f "$STATE_DIR/resolv.conf.wifi" ] || save_wifi_resolv_snapshot
+}
+
+save_wifi_resolv_snapshot() {
+  tmp="$STATE_DIR/resolv.conf.wifi.$$"
+  awk -v dev="$WIFI_IF" '
+    $1 == "nameserver" && $2 != "" {
+      if (!seen[$2]++) print "nameserver " $2 " # " dev
+      next
+    }
+    { print }
+  ' "$RESOLV_CONF" > "$tmp" 2>/dev/null && mv "$tmp" "$STATE_DIR/resolv.conf.wifi" || rm -f "$tmp"
 }
 
 write_usb_dns() {
@@ -376,6 +567,24 @@ write_usb_dns() {
   done
   cp "$tmp" "$RESOLV_CONF" 2>/dev/null || true
   rm -f "$tmp"
+}
+
+write_usb_env_state() {
+  {
+    printf 'interface=%s\n' "${interface:-}"
+    printf 'ip=%s\n' "${ip:-}"
+    printf 'router=%s\n' "${router:-}"
+    printf 'mask=%s\n' "${mask:-}"
+    printf 'dns=%s\n' "${dns:-}"
+    printf 'lease=%s\n' "${lease:-}"
+  } > "$STATE_DIR/usb0.env"
+}
+
+usb_primary_fail() {
+  reason="$1"
+  route_log "usb-primary transaction failed reason=$reason; restoring wifi fallback"
+  restore_wifi_fallback_routes
+  return 1
 }
 
 apply_usb_primary_routes() {
@@ -392,16 +601,24 @@ apply_usb_primary_routes() {
   ip addr flush dev "$USB_IF" 2>/dev/null || true
   ip addr add "$ip/$usb_prefix_value" brd "${broadcast:-+}" dev "$USB_IF" || {
     route_log "failed configuring $USB_IF address $ip/$usb_prefix_value"
+    usb_primary_fail configure-address
     return 1
   }
   ip link set dev "$USB_IF" up || {
     route_log "failed setting $USB_IF up"
+    usb_primary_fail link-up
     return 1
   }
 
   ROUTES_CHANGED=0
-  install_connected_once "$usb_route" "$USB_IF" "$ip" "$USB_METRIC" usb && ROUTES_CHANGED=1 || return 1
-  install_default_once "$USB_IF" "$gw" "$USB_METRIC" usb && ROUTES_CHANGED=1 || return 1
+  install_connected_once "$usb_route" "$USB_IF" "$ip" "$USB_METRIC" usb && ROUTES_CHANGED=1 || {
+    usb_primary_fail usb-connected-route
+    return 1
+  }
+  install_default_once "$USB_IF" "$gw" "$USB_METRIC" usb && ROUTES_CHANGED=1 || {
+    usb_primary_fail usb-default-route
+    return 1
+  }
 
   if [ -n "$wifi_ip" ] && [ -n "$wifi_prefix" ]; then
     wifi_route="$(route_for_prefix "$wifi_ip" "$wifi_prefix")"
@@ -424,11 +641,12 @@ apply_usb_primary_routes() {
   flush_route_cache_if_changed
   if [ "$(route_lookup_dev "$gw" "$ip")" != "$USB_IF" ]; then
     route_log "verification failed route_get gw=$gw from=$ip dev=$(route_lookup_dev "$gw" "$ip")"
+    usb_primary_fail route-lookup
     return 1
   fi
   [ -n "${dns:-}" ] && write_usb_dns
 
-  env | sort > "$STATE_DIR/usb0.env"
+  write_usb_env_state
   printf '%s\n' "$ip" > "$STATE_DIR/usb0.ip"
   printf '%s\n' "$usb_prefix_value" > "$STATE_DIR/usb0.prefix"
   printf '%s\n' "$gw" > "$STATE_DIR/usb0.router"

@@ -66,15 +66,26 @@ show_route() {
       *) shift ;;
     esac
   done
-  awk -v p="$prefix" -v d="$dev" '{
+  awk -v p="$prefix" -v d="$dev" -v omit="${MOCK_OMIT_FILTERED_DEV:-0}" '{
     line=$0; has_dev=0
     for (i = 1; i <= NF; i++) if ($i == "dev" && $(i + 1) == d) has_dev=1
-    if ($1 == p && (d == "" || has_dev)) print line
+    if ($1 == p && (d == "" || has_dev)) {
+      if (d != "" && omit == "1") {
+        out=""
+        for (i = 1; i <= NF; i++) {
+          if ($i == "dev" && $(i + 1) == d) { i++; continue }
+          out = out (out == "" ? "" : " ") $i
+        }
+        print out
+      } else {
+        print line
+      }
+    }
   }' "$ROUTES"
 }
 
 delete_route() {
-  [ "${MOCK_FAIL_DEL:-0}" = "1" ] && exit 2
+  [ "${MOCK_FAIL_DEL:-0}" = "1" ] && { echo "mock forced delete failure" >&2; exit 2; }
   prefix="$1"
   shift
   dev=""
@@ -89,14 +100,21 @@ delete_route() {
     esac
   done
   tmp="$R/routes.$$"
-  awk -v p="$prefix" -v d="$dev" -v v="$via" -v m="$metric" '
+  awk -v p="$prefix" -v d="$dev" -v v="$via" -v m="$metric" -v fail_kernel="${MOCK_FAIL_KERNEL_DEL:-0}" '
     BEGIN { removed=0 }
     {
       has_dev=(d == ""); has_via=(v == ""); has_metric=(m == "")
+      is_kernel=0; is_link=0
       for (i = 1; i <= NF; i++) {
         if ($i == "dev" && $(i + 1) == d) has_dev=1
         if ($i == "via" && $(i + 1) == v) has_via=1
         if ($i == "metric" && $(i + 1) == m) has_metric=1
+        if ($i == "proto" && $(i + 1) == "kernel") is_kernel=1
+        if ($i == "scope" && $(i + 1) == "link") is_link=1
+      }
+      if (!removed && fail_kernel == "1" && $1 == p && has_dev && is_kernel && is_link) {
+        print "RTNETLINK answers: No such process" > "/dev/stderr"
+        exit 9
       }
       if (!removed && $1 == p && has_dev && has_via && has_metric) {
         removed=1
@@ -114,6 +132,45 @@ replace_route() {
   line="$*"
   echo "$line" >> "$ROUTES"
   echo "route replace $line" >> "$MUT"
+}
+
+change_route() {
+  prefix="$1"
+  shift
+  dev=""
+  src=""
+  metric=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      dev) dev="$2"; shift 2 ;;
+      src) src="$2"; shift 2 ;;
+      metric) metric="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  [ "${MOCK_FAIL_CHANGE:-0}" = "1" ] && { echo "mock route change unsupported" >&2; exit 2; }
+  tmp="$R/routes.$$"
+  awk -v p="$prefix" -v d="$dev" -v s="$src" -v m="$metric" '
+    BEGIN { changed=0 }
+    {
+      has_dev=0; has_src=(s == ""); is_kernel=0; is_link=0
+      for (i = 1; i <= NF; i++) {
+        if ($i == "dev" && $(i + 1) == d) has_dev=1
+        if ($i == "src" && $(i + 1) == s) has_src=1
+        if ($i == "proto" && $(i + 1) == "kernel") is_kernel=1
+        if ($i == "scope" && $(i + 1) == "link") is_link=1
+      }
+      if (!changed && $1 == p && has_dev && has_src && is_kernel && is_link) {
+        print p " dev " d " proto kernel scope link src " s " metric " m
+        changed=1
+        next
+      }
+      print
+    }
+    END { if (!changed) exit 7 }
+  ' "$ROUTES" > "$tmp" || { rm -f "$tmp"; echo "RTNETLINK answers: No such process" >&2; exit 2; }
+  mv "$tmp" "$ROUTES"
+  echo "route change $prefix dev=$dev src=$src metric=$metric" >> "$MUT"
 }
 
 ip4_addr_show() {
@@ -143,6 +200,18 @@ addr_add() {
   awk -v d="$dev" '$1 != d' "$ADDRS" > "$R/addrs.$$"
   printf '%s %s %s\n' "$dev" "$ip" "$prefix" >> "$R/addrs.$$"
   mv "$R/addrs.$$" "$ADDRS"
+  if [ "${MOCK_KERNEL_ON_ADDR:-0}" = "1" ] && [ "$prefix" = "24" ]; then
+    route_prefix="$(printf '%s\n' "$ip" | awk -F. '{ print $1 "." $2 "." $3 ".0/24" }')"
+    awk -v p="$route_prefix" -v d="$dev" '{
+      keep=1
+      if ($1 == p) {
+        for (i = 1; i <= NF; i++) if ($i == "dev" && $(i + 1) == d) keep=0
+      }
+      if (keep) print
+    }' "$ROUTES" > "$R/routes.$$"
+    printf '%s dev %s proto kernel scope link src %s\n' "$route_prefix" "$dev" "$ip" >> "$R/routes.$$"
+    mv "$R/routes.$$" "$ROUTES"
+  fi
   echo "addr add $dev $ip/$prefix" >> "$MUT"
 }
 
@@ -223,6 +292,7 @@ case "${1:-}" in
       show) shift; show_route "$@" ;;
       del) shift; delete_route "$@" ;;
       replace) shift; replace_route "$@" ;;
+      change) shift; change_route "$@" ;;
       flush)
         if [ "${2:-}" = "cache" ]; then
           [ "${MOCK_FAIL_CACHE:-0}" = "1" ] && exit 2
@@ -269,6 +339,8 @@ run_script() {
   event="$1"
   shift
   PATH="$TMP/bin:$PATH" MOCK_ROOT="$C" MOCK_FAIL_DEL="${MOCK_FAIL_DEL:-0}" MOCK_FAIL_CACHE="${MOCK_FAIL_CACHE:-0}" \
+    MOCK_FAIL_KERNEL_DEL="${MOCK_FAIL_KERNEL_DEL:-0}" MOCK_FAIL_CHANGE="${MOCK_FAIL_CHANGE:-0}" \
+    MOCK_KERNEL_ON_ADDR="${MOCK_KERNEL_ON_ADDR:-0}" MOCK_OMIT_FILTERED_DEV="${MOCK_OMIT_FILTERED_DEV:-0}" \
     PACKAGE_DIR="$ROOT/package" STATE_DIR="$C/state" \
     SYS_CLASS_NET="$C/sys" RESOLV_CONF="$C/resolv.conf" LOG_FILE="$C/log" \
     interface=usb0 ip=192.0.2.10 router=192.0.2.1 mask=24 dns="1.1.1.1 9.9.9.9" \
@@ -277,6 +349,8 @@ run_script() {
 
 run_monitor_once() {
   PATH="$TMP/bin:$PATH" MOCK_ROOT="$C" MOCK_FAIL_DEL="${MOCK_FAIL_DEL:-0}" MOCK_FAIL_CACHE="${MOCK_FAIL_CACHE:-0}" \
+    MOCK_FAIL_KERNEL_DEL="${MOCK_FAIL_KERNEL_DEL:-0}" MOCK_FAIL_CHANGE="${MOCK_FAIL_CHANGE:-0}" \
+    MOCK_KERNEL_ON_ADDR="${MOCK_KERNEL_ON_ADDR:-0}" MOCK_OMIT_FILTERED_DEV="${MOCK_OMIT_FILTERED_DEV:-0}" \
     PACKAGE_DIR="$ROOT/package" STATE_DIR="$C/state" \
     SYS_CLASS_NET="$C/sys" RESOLV_CONF="$C/resolv.conf" LOG_FILE="$C/log" MONITOR_ONCE=1 \
     "$SH" "$ROOT/package/usb0-route-monitor.sh"
@@ -334,13 +408,78 @@ seed_active_state() {
 }
 
 new_case
+printf '192.0.2.0/24 dev usb0 proto kernel scope link src 192.0.2.10\n' > "$C/routes"
+if PATH="$TMP/bin:$PATH" MOCK_ROOT="$C" MOCK_FAIL_KERNEL_DEL=1 \
+  PACKAGE_DIR="$ROOT/package" STATE_DIR="$C/state" LOG_FILE="$C/log" \
+  "$SH" -c '. "$0"; delete_one_route_line "$1" "$2" "$3" "$4"' \
+  "$ROOT/package/primary-routing-lib.sh" \
+  '192.0.2.0/24 dev usb0 proto kernel scope link src 192.0.2.10' usb0 direct-kernel connected >/dev/null 2>&1; then
+  echo "FAIL: direct kernel route deletion unexpectedly succeeded" >&2
+  exit 1
+fi
+assert_grep 'route_delete failed category=connected label=direct-kernel prefix=192\.0\.2\.0/24 supplied_dev=usb0 original=\[192\.0\.2\.0/24 dev usb0 proto kernel scope link src 192\.0\.2\.10\].*RTNETLINK answers' "$C/log"
+echo "PASS: kernel connected deletion failure logs original route and stderr"
+
+new_case
 printf 'default via 192.0.2.1 dev wlan0\n192.0.2.0/24 dev wlan0 proto kernel scope link src 192.0.2.20\n' > "$C/routes"
+MOCK_KERNEL_ON_ADDR=1 MOCK_FAIL_KERNEL_DEL=1 run_script bound
+assert_count 1 '^192\.0\.2\.0/24 dev usb0 proto kernel scope link src 192\.0\.2\.10 metric 50$'
+assert_count 1 '^192\.0\.2\.0/24 dev wlan0 proto kernel scope link src 192\.0\.2\.20 metric 300$'
+assert_grep '^route change 192\.0\.2\.0/24 dev=usb0 src=192\.0\.2\.10 metric=50$' "$C/mutations"
+assert_grep '^route change 192\.0\.2\.0/24 dev=wlan0 src=192\.0\.2\.20 metric=300$' "$C/mutations"
+[ -f "$C/state/usb0.ip" ] || { echo "FAIL: usb state was not written after verified route change" >&2; exit 1; }
+[ -f "$C/state/ethernet.active" ] || { echo "FAIL: ethernet.active missing after verified route change" >&2; exit 1; }
+assert_lookup_usb
+echo "PASS: physical kernel connected route is changed and verified before active state"
+
+new_case
+printf 'default via 192.0.2.1 dev wlan0 metric 100\n192.0.2.0/24 dev wlan0 proto kernel scope link src 192.0.2.20\n' > "$C/routes"
+if MOCK_KERNEL_ON_ADDR=1 MOCK_FAIL_CHANGE=1 run_script bound >/dev/null 2>&1; then
+  echo "FAIL: unsupported connected-route capability unexpectedly succeeded" >&2
+  exit 1
+fi
+assert_grep 'unsupported-target-routing label=usb connected prefix=192\.0\.2\.0/24 dev=usb0' "$C/log"
+assert_grep 'usb-primary transaction failed reason=usb-connected-route; restoring wifi fallback' "$C/log"
+[ ! -f "$C/state/ethernet.active" ] || { echo "FAIL: ethernet.active written after failed verification" >&2; exit 1; }
+[ ! -f "$C/state/usb0.ip" ] || { echo "FAIL: usb state written after failed verification" >&2; exit 1; }
+assert_grep '^default via 192\.0\.2\.1 dev wlan0 metric 100$' "$C/routes"
+echo "PASS: unsupported connected-route capability rolls back without active state"
+
+new_case
+printf 'default via 192.0.2.1 dev wlan0 metric 100\ndefault via 192.0.2.1 dev wlan0 metric 300\n192.0.2.0/24 dev wlan0 proto kernel scope link src 192.0.2.20\n' > "$C/routes"
+MOCK_OMIT_FILTERED_DEV=1 run_script bound
+assert_count 1 '^default via 192\.0\.2\.1 dev usb0 metric 50$'
+assert_count 1 '^default via 192\.0\.2\.1 dev wlan0 metric 300$'
+assert_not_grep '^default via 192\.0\.2\.1 dev wlan0 metric 100$' "$C/routes"
+echo "PASS: filtered default output without dev uses caller-supplied interface"
+
+new_case
+printf 'default via 192.0.2.1 dev wlan0\n192.0.2.0/24 dev wlan0 proto kernel scope link src 192.0.2.20\n' > "$C/routes"
+cat > "$C/resolv.conf" <<'EOS'
+nameserver 8.8.8.8
+nameserver 1.1.1.1
+nameserver 8.8.8.8 # wlan0
+nameserver 1.1.1.1 # wlan0
+EOS
 run_script bound
 assert_count 1 '^default via 192\.0\.2\.1 dev usb0 metric 50$'
 assert_count 1 '^default via 192\.0\.2\.1 dev wlan0 metric 300$'
 assert_not_grep '^default via 192\.0\.2\.1 dev wlan0$' "$C/routes"
+assert_count_file() {
+  expected="$1"
+  pattern="$2"
+  file="$3"
+  actual="$(grep -Ec "$pattern" "$file" || true)"
+  [ "$actual" = "$expected" ] || {
+    echo "FAIL: expected $expected matches for $pattern in $file, got $actual" >&2
+    cat "$file" >&2
+    exit 1
+  }
+}
+assert_count_file 1 '^nameserver 8\.8\.8\.8 # wlan0$' "$C/state/resolv.conf.wifi"
+assert_count_file 1 '^nameserver 1\.1\.1\.1 # wlan0$' "$C/state/resolv.conf.wifi"
 assert_lookup_usb
-echo "PASS: firmware metricless default repaired"
+echo "PASS: firmware metricless default repaired and wifi DNS snapshot deduped"
 
 new_case
 printf 'default via 192.0.2.1 dev wlan0\ndefault via 192.0.2.1 dev wlan0 metric 300\ndefault via 192.0.2.1 dev wlan0 metric 100\ndefault via 192.0.2.1 dev usb0 metric 50\ndefault via 192.0.2.1 dev usb0 metric 50\n192.0.2.0/24 dev wlan0 proto kernel scope link src 192.0.2.20\n' > "$C/routes"
@@ -353,8 +492,9 @@ new_case
 printf 'default via 192.0.2.1 dev usb0 metric 50\ndefault via 192.0.2.1 dev wlan0 metric 300\n192.0.2.0/24 dev wlan0 proto kernel scope link src 192.0.2.20\n192.0.2.0/24 dev usb0 proto kernel scope link src 192.0.2.10\n192.0.2.0/24 dev wlan0 src 192.0.2.20 metric 100\n' > "$C/routes"
 seed_active_state
 run_monitor_once
-assert_count 1 '^192\.0\.2\.0/24 dev usb0 src 192\.0\.2\.10 metric 50$'
-assert_count 1 '^192\.0\.2\.0/24 dev wlan0 src 192\.0\.2\.20 metric 300$'
+assert_count 1 '^192\.0\.2\.0/24 dev usb0 proto kernel scope link src 192\.0\.2\.10 metric 50$'
+assert_count 1 '^192\.0\.2\.0/24 dev wlan0 proto kernel scope link src 192\.0\.2\.20 metric 300$'
+assert_not_grep '^192\.0\.2\.0/24 dev wlan0 src 192\.0\.2\.20 metric 100$' "$C/routes"
 assert_lookup_usb
 echo "PASS: same-subnet connected routes repaired"
 
@@ -390,7 +530,7 @@ printf 'usb0 192.0.2.10 24\nwlan0 192.0.2.20 24\n' > "$C/addrs"
 seed_active_state
 run_monitor_once
 assert_count 1 '^default via 192\.0\.2\.1 dev wlan0 metric 300$'
-assert_count 1 '^192\.0\.2\.0/24 dev wlan0 src 192\.0\.2\.20 metric 300$'
+assert_count 1 '^192\.0\.2\.0/24 dev wlan0 proto kernel scope link src 192\.0\.2\.20 metric 300$'
 assert_lookup_usb
 echo "PASS: wifi route recreation reconciled"
 
@@ -427,7 +567,7 @@ if MOCK_FAIL_DEL=1 run_monitor_once >/dev/null 2>&1; then
   echo "FAIL: route deletion failure unexpectedly succeeded" >&2
   exit 1
 fi
-assert_grep 'failed removing' "$C/log"
+assert_grep 'route_delete failed category=default label=usb default .*error=mock forced delete failure' "$C/log"
 echo "PASS: command failure is bounded and logged"
 
 new_case
