@@ -335,10 +335,16 @@ route_get() {
   route_src="$(printf '%s\n' "$best" | line_src)"
   [ -n "$route_src" ] || route_src="$src"
   [ -n "$route_src" ] || route_src="0.0.0.0"
+  src_arg=""
+  src_out=" src $route_src"
+  if [ -n "$src" ]; then
+    src_arg=" from $src"
+    src_out=""
+  fi
   if [ -n "$via" ]; then
-    echo "$dst from $src via $via dev $dev src $route_src"
+    echo "$dst$src_arg via $via dev $dev$src_out"
   else
-    echo "$dst from $src dev $dev src $route_src"
+    echo "$dst$src_arg dev $dev$src_out"
   fi
 }
 
@@ -459,6 +465,7 @@ assert_grep '^USB_SOURCE_LOOKUP_AFTER_CONVERSION=usb0$' "$C/report.txt"
 assert_grep '^PROBE_SSH_PRESERVATION_ROUTE_ACTIVE=YES$' "$C/report.txt"
 assert_grep '^PROBE_SSH_PRESERVATION_LOOKUP=wlan0$' "$C/report.txt"
 assert_grep '^USB_GATEWAY_LOOKUP_AFTER_CONVERSION=usb0$' "$C/report.txt"
+assert_grep '^USB_GATEWAY_SRC_AFTER_CONVERSION=192\.0\.2\.10$' "$C/report.txt"
 assert_grep '^USB_GENERAL_LAN_LOOKUP_AFTER_CONVERSION=usb0$' "$C/report.txt"
 assert_grep '^WIFI_CONNECTED_ROUTE_INITIAL_TYPE=kernel$' "$C/report.txt"
 assert_grep '^WIFI_CONNECTED_ROUTE_DELETE_FORM=exact$' "$C/report.txt"
@@ -509,6 +516,7 @@ DETACHED_VERIFY=1 MOCK_CONNECTED_DELETE=exact MOCK_DEFAULT_DELETE=only_metricles
 assert_grep '^PROBE_SSH_PRESERVATION_ROUTE_ACTIVE=NO$' "$C/report.txt"
 assert_grep '^PROBE_SSH_PRESERVATION_LOOKUP=usb0$' "$C/report.txt"
 assert_grep '^USB_GATEWAY_LOOKUP_AFTER_CONVERSION=usb0$' "$C/report.txt"
+assert_grep '^USB_GATEWAY_SRC_AFTER_CONVERSION=192\.0\.2\.10$' "$C/report.txt"
 assert_grep '^USB_GENERAL_LAN_LOOKUP_AFTER_CONVERSION=usb0$' "$C/report.txt"
 assert_grep '^ROUTE_ONLY_FORWARDING_STATE=YES$' "$C/report.txt"
 assert_grep '^ROLLBACK_WIFI_CONNECTED_RESTORE_FORM=scope_link$' "$C/report.txt"
