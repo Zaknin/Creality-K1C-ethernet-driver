@@ -61,6 +61,10 @@ line_src() {
   awk '{ for (i = 1; i <= NF; i++) if ($i == "src") { print $(i + 1); exit } }'
 }
 
+line_via() {
+  awk '{ for (i = 1; i <= NF; i++) if ($i == "via") { print $(i + 1); exit } }'
+}
+
 show_route() {
   if [ "$#" -eq 0 ]; then
     cat "$ROUTES"
@@ -153,12 +157,16 @@ route_replace() {
   src=""
   metric=""
   via=""
+  proto=""
+  scope=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       dev) dev="$2"; shift 2 ;;
       src) src="$2"; shift 2 ;;
       metric) metric="$2"; shift 2 ;;
       via) via="$2"; shift 2 ;;
+      proto) proto="$2"; shift 2 ;;
+      scope) scope="$2"; shift 2 ;;
       *) shift ;;
     esac
   done
@@ -166,7 +174,15 @@ route_replace() {
     line="default via $via dev $dev"
     [ -n "$metric" ] && line="$line metric $metric"
   else
+    form=plain
+    [ "$scope" = "link" ] && form=scope_link
+    [ "$proto" = "kernel" ] && [ "$scope" = "link" ] && form=proto_kernel
+    case " ${MOCK_RESTORE_ABSENT_FORMS:-} " in
+      *" $form "*) echo "route replace $prefix dev $dev form=$form absent" >> "$MUT"; exit 0 ;;
+    esac
     line="$prefix dev $dev"
+    [ -n "$proto" ] && line="$line proto $proto"
+    [ -n "$scope" ] && line="$line scope $scope"
     [ -n "$src" ] && line="$line src $src"
     [ -n "$metric" ] && line="$line metric $metric"
   fi
@@ -244,16 +260,17 @@ route_del() {
   [ "$proto" = "1" ] && form="proto"
   [ "$proto" = "1" ] && [ "$scope" = "1" ] && form="proto_scope"
   [ "$proto" = "1" ] && [ "$scope" = "1" ] && [ -n "$src" ] && form="exact"
-  awk -v p="$prefix" -v d="$dev" -v s="$src" -v form="$form" -v mode="$mode" '
+  awk -v p="$prefix" -v d="$dev" -v s="$src" -v m="$metric" -v form="$form" -v mode="$mode" '
     BEGIN { removed=0 }
     {
-      has_dev=0; has_src=(s == ""); has_metric=0
+      has_dev=0; has_src=(s == ""); has_metric=0; metric_val=""
       for (i = 1; i <= NF; i++) {
         if ($i == "dev" && $(i + 1) == d) has_dev=1
         if ($i == "src" && $(i + 1) == s) has_src=1
-        if ($i == "metric") has_metric=1
+        if ($i == "metric") { has_metric=1; metric_val=$(i + 1) }
       }
       if ($1 == p && has_dev) {
+        if (m != "" && has_metric && metric_val == m) { removed=1; next }
         if (mode == "wrong_explicit" && has_metric) { removed=1; next }
         if (!has_metric && (mode == form || (mode == "exact" && form == "exact"))) { removed=1; next }
       }
@@ -280,6 +297,15 @@ prefix_match() {
   esac
 }
 
+prefix_rank() {
+  case "$1" in
+    */32) echo 32 ;;
+    */24) echo 24 ;;
+    default) echo 0 ;;
+    *) echo 0 ;;
+  esac
+}
+
 route_get() {
   dst="$1"
   src=""
@@ -287,6 +313,7 @@ route_get() {
     src="$3"
   fi
   best=""
+  best_rank=-1
   best_metric=999999
   while IFS= read -r line; do
     [ -n "$line" ] || continue
@@ -294,18 +321,25 @@ route_get() {
     prefix="$1"
     if prefix_match "$dst" "$prefix"; then
       metric="$(printf '%s\n' "$line" | metric_of_line)"
-      if [ "$metric" -lt "$best_metric" ]; then
+      rank="$(prefix_rank "$prefix")"
+      if [ "$rank" -gt "$best_rank" ] || { [ "$rank" -eq "$best_rank" ] && [ "$metric" -lt "$best_metric" ]; }; then
         best="$line"
+        best_rank="$rank"
         best_metric="$metric"
       fi
     fi
   done < "$ROUTES"
   [ -n "$best" ] || exit 1
   dev="$(printf '%s\n' "$best" | line_dev)"
+  via="$(printf '%s\n' "$best" | line_via)"
   route_src="$(printf '%s\n' "$best" | line_src)"
   [ -n "$route_src" ] || route_src="$src"
   [ -n "$route_src" ] || route_src="0.0.0.0"
-  echo "$dst from $src dev $dev src $route_src"
+  if [ -n "$via" ]; then
+    echo "$dst from $src via $via dev $dev src $route_src"
+  else
+    echo "$dst from $src dev $dev src $route_src"
+  fi
 }
 
 case "${1:-}" in
@@ -317,7 +351,31 @@ case "${1:-}" in
   addr)
     shift
     case "$1" in
-      flush) echo "addr flush $3" >> "$MUT"; awk -v d="$3" '$1 != d' "$ADDRS" > "$R/addrs.$$"; mv "$R/addrs.$$" "$ADDRS" ;;
+      flush)
+        echo "addr flush $3" >> "$MUT"
+        awk -v d="$3" '$1 != d' "$ADDRS" > "$R/addrs.$$"; mv "$R/addrs.$$" "$ADDRS"
+        awk -v d="$3" '{
+          has_dev=0
+          for (i = 1; i <= NF; i++) if ($i == "dev" && $(i + 1) == d) has_dev=1
+          if (!has_dev) print
+        }' "$ROUTES" > "$R/routes.$$"
+        mv "$R/routes.$$" "$ROUTES"
+        if [ "$3" = "usb0" ] && [ "${MOCK_DROP_WIFI_CONNECTED_ON_USB_FLUSH:-0}" = "1" ]; then
+          awk '{
+            drop=0
+            if ($1 == "192.0.2.0/24") {
+              has_wlan=0; has_metric=0
+              for (i = 1; i <= NF; i++) {
+                if ($i == "dev" && $(i + 1) == "wlan0") has_wlan=1
+                if ($i == "metric") has_metric=1
+              }
+              if (has_wlan && !has_metric) drop=1
+            }
+            if (!drop) print
+          }' "$ROUTES" > "$R/routes.$$"
+          mv "$R/routes.$$" "$ROUTES"
+        fi
+        ;;
       show) [ "$2" = "dev" ] && addr_show "$3" ;;
     esac
     ;;
@@ -354,15 +412,18 @@ default via 192.0.2.1 dev wlan0
 EOS
   cat > "$C/addrs" <<'EOS'
 wlan0 192.0.2.20 24
-usb0 192.0.2.10 24
+  usb0 192.0.2.10 24
 EOS
   : > "$C/mutations"
+  unset DETACHED_VERIFY MOCK_CONNECTED_DELETE MOCK_DEFAULT_DELETE MOCK_OMIT_FILTERED_DEV MOCK_RESTORE_ABSENT_FORMS MOCK_DROP_WIFI_CONNECTED_ON_USB_FLUSH
 }
 
 run_probe() {
   report="$C/report.txt"
   PATH="$TMP/bin:$PATH" MOCK_ROOT="$C" PACKAGE_DIR="$TMP/package" REPORT="$report" \
     DETACHED_VERIFY="${DETACHED_VERIFY:-0}" DETACHED_ROLLBACK_DELAY=0 \
+    MOCK_RESTORE_ABSENT_FORMS="${MOCK_RESTORE_ABSENT_FORMS:-}" \
+    MOCK_DROP_WIFI_CONNECTED_ON_USB_FLUSH="${MOCK_DROP_WIFI_CONNECTED_ON_USB_FLUSH:-0}" \
     SSH_CLIENT="192.0.2.50 55555 22" SSH_CONNECTION="192.0.2.50 55555 192.0.2.20 22" \
     TIMEOUT_SECONDS=20 "$SH" "$ROOT/development/k1c-route-capability-probe.sh" >/dev/null
 }
@@ -399,7 +460,12 @@ assert_grep '^PROBE_SSH_PRESERVATION_ROUTE_ACTIVE=YES$' "$C/report.txt"
 assert_grep '^PROBE_SSH_PRESERVATION_LOOKUP=wlan0$' "$C/report.txt"
 assert_grep '^USB_GATEWAY_LOOKUP_AFTER_CONVERSION=usb0$' "$C/report.txt"
 assert_grep '^USB_GENERAL_LAN_LOOKUP_AFTER_CONVERSION=usb0$' "$C/report.txt"
-assert_grep '^SAFE_ROUTE_ONLY_STRATEGY=YES$' "$C/report.txt"
+assert_grep '^WIFI_CONNECTED_ROUTE_INITIAL_TYPE=kernel$' "$C/report.txt"
+assert_grep '^WIFI_CONNECTED_ROUTE_DELETE_FORM=exact$' "$C/report.txt"
+assert_grep '^WIFI_CONNECTED_ROUTE_CONVERSION=SUPPORTED$' "$C/report.txt"
+assert_grep '^ROUTE_ONLY_FORWARDING_STATE=NO$' "$C/report.txt"
+assert_grep '^ROLLBACK_WIFI_STATE=OK$' "$C/report.txt"
+assert_grep '^SAFE_ROUTE_ONLY_STRATEGY=NO$' "$C/report.txt"
 assert_grep 'boot hook absent: /etc/init.d/S46usb_ethernet_primary' "$C/report.txt"
 assert_grep 'route add 192\.0\.2\.0/24 dev usb0 src 192\.0\.2\.10 metric 50' "$C/mutations"
 assert_grep 'route del 192\.0\.2\.0/24 dev=usb0 src=192\.0\.2\.10 form=exact' "$C/mutations"
@@ -409,7 +475,9 @@ new_case
 MOCK_CONNECTED_DELETE=proto MOCK_DEFAULT_DELETE=only_metricless run_probe
 assert_grep '^USB_KERNEL_CONNECTED_EXACT_DELETE=UNSUPPORTED$' "$C/report.txt"
 assert_grep '^WIFI_KERNEL_CONNECTED_EXACT_DELETE=UNSUPPORTED$' "$C/report.txt"
-assert_grep '^SAFE_ROUTE_ONLY_STRATEGY=YES$' "$C/report.txt"
+assert_grep '^WIFI_CONNECTED_ROUTE_DELETE_FORM=proto$' "$C/report.txt"
+assert_grep '^WIFI_CONNECTED_ROUTE_CONVERSION=SUPPORTED$' "$C/report.txt"
+assert_grep '^SAFE_ROUTE_ONLY_STRATEGY=NO$' "$C/report.txt"
 assert_grep 'route del 192\.0\.2\.0/24 dev=usb0 src= form=proto' "$C/mutations"
 echo "PASS: probe progressive connected deletion reaches less-specific form"
 
@@ -423,14 +491,16 @@ echo "PASS: probe detects unsafe default deletion and rolls back"
 new_case
 MOCK_CONNECTED_DELETE=wrong_explicit MOCK_DEFAULT_DELETE=only_metricless run_probe
 assert_grep '^SAFE_ROUTE_ONLY_STRATEGY=NO$' "$C/report.txt"
-assert_grep '^192\.0\.2\.0/24 dev wlan0 proto kernel scope link src 192\.0\.2\.20$' "$C/routes"
+assert_grep '^192\.0\.2\.0/24 dev wlan0 scope link src 192\.0\.2\.20$' "$C/routes"
 assert_grep '^default via 192\.0\.2\.1 dev wlan0$' "$C/routes"
 assert_not_grep '^192\.0\.2\.50/32' "$C/routes"
 echo "PASS: probe rolls back after connected-route partial failure"
 
 new_case
 MOCK_CONNECTED_DELETE=exact MOCK_DEFAULT_DELETE=only_metricless MOCK_OMIT_FILTERED_DEV=1 run_probe
-assert_grep '^SAFE_ROUTE_ONLY_STRATEGY=YES$' "$C/report.txt"
+assert_grep '^ROUTE_ONLY_FORWARDING_STATE=NO$' "$C/report.txt"
+assert_grep '^ROLLBACK_WIFI_STATE=OK$' "$C/report.txt"
+assert_grep '^SAFE_ROUTE_ONLY_STRATEGY=NO$' "$C/report.txt"
 assert_not_grep 'cmd=.* dev  metric' "$C/report.txt"
 echo "PASS: probe uses caller-supplied interface when filtered output omits dev"
 
@@ -440,9 +510,50 @@ assert_grep '^PROBE_SSH_PRESERVATION_ROUTE_ACTIVE=NO$' "$C/report.txt"
 assert_grep '^PROBE_SSH_PRESERVATION_LOOKUP=usb0$' "$C/report.txt"
 assert_grep '^USB_GATEWAY_LOOKUP_AFTER_CONVERSION=usb0$' "$C/report.txt"
 assert_grep '^USB_GENERAL_LAN_LOOKUP_AFTER_CONVERSION=usb0$' "$C/report.txt"
+assert_grep '^ROUTE_ONLY_FORWARDING_STATE=YES$' "$C/report.txt"
+assert_grep '^ROLLBACK_WIFI_CONNECTED_RESTORE_FORM=scope_link$' "$C/report.txt"
+assert_grep '^ROLLBACK_WIFI_STATE=OK$' "$C/report.txt"
 assert_grep '^SAFE_ROUTE_ONLY_STRATEGY=YES$' "$C/report.txt"
 assert_grep 'detached verification sleeping 0s before rollback' "$C/report.txt"
 assert_not_grep '^192\.0\.2\.50/32' "$C/routes"
 echo "PASS: detached probe verification omits ssh preservation route"
+
+new_case
+cat > "$C/routes" <<'EOS'
+default via 192.0.2.1 dev wlan0
+192.0.2.0/24 dev wlan0 scope link src 192.0.2.20
+192.0.2.0/24 dev usb0 proto kernel scope link src 192.0.2.10
+EOS
+DETACHED_VERIFY=1 MOCK_CONNECTED_DELETE=dev_only MOCK_DEFAULT_DELETE=only_metricless run_probe
+assert_grep '^WIFI_KERNEL_CONNECTED_EXACT_DELETE=UNSUPPORTED$' "$C/report.txt"
+assert_grep '^WIFI_CONNECTED_ROUTE_INITIAL_TYPE=manual$' "$C/report.txt"
+assert_grep '^WIFI_CONNECTED_ROUTE_DELETE_FORM=dev_only$' "$C/report.txt"
+assert_grep '^WIFI_CONNECTED_ROUTE_CONVERSION=SUPPORTED$' "$C/report.txt"
+assert_grep '^SAFE_ROUTE_ONLY_STRATEGY=YES$' "$C/report.txt"
+assert_grep '^192\.0\.2\.0/24 dev wlan0 scope link src 192\.0\.2\.20$' "$C/routes"
+echo "PASS: manual Wi-Fi metricless route uses verified dev-only conversion"
+
+new_case
+DETACHED_VERIFY=1 MOCK_CONNECTED_DELETE=exact MOCK_DEFAULT_DELETE=only_metricless MOCK_RESTORE_ABSENT_FORMS="scope_link proto_kernel plain" run_probe
+assert_grep '^ROUTE_ONLY_FORWARDING_STATE=YES$' "$C/report.txt"
+assert_grep '^ROLLBACK_WIFI_STATE=FAIL$' "$C/report.txt"
+assert_grep '^SAFE_ROUTE_ONLY_STRATEGY=NO$' "$C/report.txt"
+assert_grep 'rollback_connected_restore_verify_failed dev=wlan0 .*via=yes' "$C/report.txt"
+echo "PASS: rollback restore rc0 without route keeps safe strategy blocked"
+
+new_case
+DETACHED_VERIFY=1 MOCK_CONNECTED_DELETE=exact MOCK_DEFAULT_DELETE=only_metricless MOCK_RESTORE_ABSENT_FORMS="scope_link" run_probe
+assert_grep '^ROLLBACK_WIFI_CONNECTED_RESTORE_FORM=proto_kernel$' "$C/report.txt"
+assert_grep '^ROLLBACK_WIFI_STATE=OK$' "$C/report.txt"
+assert_grep '^SAFE_ROUTE_ONLY_STRATEGY=YES$' "$C/report.txt"
+echo "PASS: rollback falls through to next verified restoration syntax"
+
+new_case
+DETACHED_VERIFY=1 MOCK_CONNECTED_DELETE=exact MOCK_DEFAULT_DELETE=only_metricless MOCK_DROP_WIFI_CONNECTED_ON_USB_FLUSH=1 run_probe
+assert_grep 'rollback post-usb verification failed; retrying Wi-Fi connected route restore' "$C/report.txt"
+assert_grep 'rollback_gateway_lookup=OK stage=final_retry' "$C/report.txt"
+assert_grep '^ROLLBACK_WIFI_STATE=OK$' "$C/report.txt"
+assert_grep '^SAFE_ROUTE_ONLY_STRATEGY=YES$' "$C/report.txt"
+echo "PASS: rollback retries connected route after USB cleanup"
 
 echo "route capability probe regression checks passed"

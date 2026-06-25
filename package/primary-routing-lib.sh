@@ -235,6 +235,37 @@ route_has_metricless_connected() {
     } END { exit found ? 0 : 1 }'
 }
 
+metricless_connected_line() {
+  prefix="$1"
+  dev="$2"
+  src="$3"
+  ip route show "$prefix" dev "$dev" 2>/dev/null |
+    awk -v src="$src" '{
+      has_src=0; has_metric=0
+      for (i = 1; i <= NF; i++) {
+        if ($i == "src" && $(i + 1) == src) has_src=1
+        if ($i == "metric") has_metric=1
+      }
+      if (has_src && !has_metric) {
+        print
+        exit
+      }
+    }'
+}
+
+route_line_has_kernel_proto() {
+  line="$1"
+  printf '%s\n' "$line" |
+    awk '{
+      has_proto=0; has_scope=0
+      for (i = 1; i <= NF; i++) {
+        if ($i == "proto" && $(i + 1) == "kernel") has_proto=1
+        if ($i == "scope" && $(i + 1) == "link") has_scope=1
+      }
+      exit (has_proto && has_scope) ? 0 : 1
+    }'
+}
+
 metricless_default_exists() {
   gw="$1"
   dev="$2"
@@ -405,6 +436,39 @@ delete_kernel_connected_route() {
   return "$rc"
 }
 
+delete_connected_route_form() {
+  prefix="$1"
+  dev="$2"
+  src="$3"
+  label="$4"
+  form="$5"
+  err="$STATE_DIR/ip-route-del-connected.$$"
+  case "$form" in
+    exact)
+      ip route del "$prefix" dev "$dev" proto kernel scope link src "$src" 2>"$err"
+      ;;
+    proto_scope)
+      ip route del "$prefix" dev "$dev" proto kernel scope link 2>"$err"
+      ;;
+    proto)
+      ip route del "$prefix" dev "$dev" proto kernel 2>"$err"
+      ;;
+    *)
+      ip route del "$prefix" dev "$dev" 2>"$err"
+      ;;
+  esac
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    rm -f "$err"
+    route_log "route_delete ok category=metricless-connected label=$label prefix=$prefix supplied_dev=$dev src=$src form=$form"
+    return 0
+  fi
+  err_text="$(route_stderr_text "$err")"
+  rm -f "$err"
+  route_log "route_delete failed category=metricless-connected label=$label prefix=$prefix supplied_dev=$dev src=$src form=$form rc=$rc error=${err_text:-none}"
+  return "$rc"
+}
+
 replace_connected_route() {
   prefix="$1"
   dev="$2"
@@ -553,6 +617,62 @@ remove_routes_for_prefix_dev() {
     i=$((i + 1))
   done
   route_log "route delete limit reached label=$label prefix=$prefix dev=$dev remaining=$(ip route show "$prefix" dev "$dev" 2>/dev/null | tr '\n' ';')"
+  return 1
+}
+
+remove_metricless_connected_after_explicit() {
+  prefix="$1"
+  dev="$2"
+  src="$3"
+  metric="$4"
+  label="$5"
+  explicit_connected_route_exists "$prefix" "$dev" "$src" "$metric" || return 1
+  line="$(metricless_connected_line "$prefix" "$dev" "$src")"
+  [ -n "$line" ] || return 0
+  if route_line_has_kernel_proto "$line"; then
+    forms="exact proto_scope proto dev_only"
+  else
+    forms="dev_only"
+  fi
+  for form in $forms; do
+    delete_connected_route_form "$prefix" "$dev" "$src" "$label" "$form" || true
+    explicit_connected_route_exists "$prefix" "$dev" "$src" "$metric" || {
+      route_log "metricless connected delete removed explicit replacement label=$label prefix=$prefix dev=$dev src=$src metric=$metric form=$form"
+      return 1
+    }
+    if ! route_has_metricless_connected "$prefix" "$dev" "$src"; then
+      route_log "metricless connected delete verified label=$label prefix=$prefix dev=$dev src=$src form=$form"
+      return 0
+    fi
+  done
+  route_log "metricless connected delete failed label=$label prefix=$prefix dev=$dev src=$src initial=[$line] remaining=$(ip route show "$prefix" dev "$dev" 2>/dev/null | tr '\n' ';')"
+  return 1
+}
+
+remove_metric_connected_for_src() {
+  prefix="$1"
+  dev="$2"
+  src="$3"
+  label="$4"
+  i=0
+  while [ "$i" -lt "$ROUTE_DELETE_MAX" ]; do
+    line="$(ip route show "$prefix" dev "$dev" 2>/dev/null |
+      awk -v src="$src" '{
+        has_src=0; has_metric=0
+        for (i = 1; i <= NF; i++) {
+          if ($i == "src" && $(i + 1) == src) has_src=1
+          if ($i == "metric") has_metric=1
+        }
+        if (has_src && has_metric) {
+          print
+          exit
+        }
+      }')"
+    [ -n "$line" ] || return 0
+    delete_one_route_line "$line" "$dev" "$label metric-connected" connected || return 1
+    i=$((i + 1))
+  done
+  route_log "metric connected delete limit reached label=$label prefix=$prefix dev=$dev src=$src remaining=$(ip route show "$prefix" dev "$dev" 2>/dev/null | tr '\n' ';')"
   return 1
 }
 
@@ -707,7 +827,7 @@ install_connected_once() {
     return 1
   }
   if route_has_metricless_connected "$ic_prefix" "$ic_dev" "$ic_src"; then
-    delete_kernel_connected_route "$ic_prefix" "$ic_dev" "$ic_src" "$ic_label" || true
+    remove_metricless_connected_after_explicit "$ic_prefix" "$ic_dev" "$ic_src" "$ic_metric" "$ic_label" || true
   fi
   reconcile_connected_routes_for_dev "$ic_prefix" "$ic_dev" "$ic_src" "$ic_metric" "$ic_label" || true
   if connected_route_verified "$ic_prefix" "$ic_dev" "$ic_src" "$ic_metric"; then
@@ -723,12 +843,33 @@ restore_connected_metricless_once() {
   rc_dev="$2"
   rc_src="$3"
   rc_label="$4"
-  metricless_connected_verified "$rc_prefix" "$rc_dev" "$rc_src" && return 0
-  for form in proto_kernel scope_link plain; do
+  rc_gw="${5:-}"
+  remove_metric_connected_for_src "$rc_prefix" "$rc_dev" "$rc_src" "$rc_label" || true
+  if metricless_connected_verified "$rc_prefix" "$rc_dev" "$rc_src"; then
+    if [ -z "$rc_gw" ] || { [ "$(route_lookup_dev "$rc_gw")" = "$rc_dev" ] && ! route_lookup_has_via "$rc_gw"; }; then
+      return 0
+    fi
+  fi
+  for form in scope_link proto_kernel plain; do
     replace_metricless_connected_route "$rc_prefix" "$rc_dev" "$rc_src" "$rc_label" "$form" || true
-    if metricless_connected_verified "$rc_prefix" "$rc_dev" "$rc_src"; then
+    if metricless_connected_verified "$rc_prefix" "$rc_dev" "$rc_src" &&
+       { [ -z "$rc_gw" ] || { [ "$(route_lookup_dev "$rc_gw")" = "$rc_dev" ] && ! route_lookup_has_via "$rc_gw"; }; }; then
       route_log "restored $rc_label connected prefix=$rc_prefix dev=$rc_dev src=$rc_src form=$form"
       return 0
+    fi
+    if metricless_connected_verified "$rc_prefix" "$rc_dev" "$rc_src" &&
+       [ -n "$rc_gw" ] &&
+       ! route_lookup_has_via "$rc_gw"; then
+      route_log "restored $rc_label connected pending usb cleanup prefix=$rc_prefix dev=$rc_dev src=$rc_src form=$form route_get_dev=$(route_lookup_dev "$rc_gw")"
+      return 0
+    fi
+    if [ -n "$rc_gw" ]; then
+      if route_lookup_has_via "$rc_gw"; then
+        via_status=yes
+      else
+        via_status=no
+      fi
+      route_log "restore connected verification failed label=$rc_label prefix=$rc_prefix dev=$rc_dev src=$rc_src form=$form route_get_dev=$(route_lookup_dev "$rc_gw") via=$via_status"
     fi
   done
   route_log "wifi restore connected verification failed label=$rc_label prefix=$rc_prefix dev=$rc_dev src=$rc_src remaining=$(ip route show "$rc_prefix" dev "$rc_dev" 2>/dev/null | tr '\n' ';')"
@@ -765,6 +906,16 @@ route_lookup_dev() {
     ip route get "$dst" from "$src" 2>/dev/null | awk 'NR == 1 { for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }'
   else
     ip route get "$dst" 2>/dev/null | awk 'NR == 1 { for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }'
+  fi
+}
+
+route_lookup_has_via() {
+  dst="$1"
+  src="${2:-}"
+  if [ -n "$src" ]; then
+    ip route get "$dst" from "$src" 2>/dev/null | awk 'NR == 1 { for (i = 1; i <= NF; i++) if ($i == "via") found=1 } END { exit found ? 0 : 1 }'
+  else
+    ip route get "$dst" 2>/dev/null | awk 'NR == 1 { for (i = 1; i <= NF; i++) if ($i == "via") found=1 } END { exit found ? 0 : 1 }'
   fi
 }
 
@@ -949,16 +1100,26 @@ restore_wifi_fallback_routes() {
   wifi_prefix="$(file_value "$STATE_DIR/wifi.prefix" 2>/dev/null || iface_prefix "$WIFI_IF")"
   usb_ip="$(file_value "$STATE_DIR/usb0.ip" 2>/dev/null || iface_ipv4 "$USB_IF")"
   usb_prefix="$(file_value "$STATE_DIR/usb0.prefix" 2>/dev/null || iface_prefix "$USB_IF")"
+  wifi_route=""
   ROUTES_CHANGED=0
   if [ -n "$wifi_ip" ] && [ -n "$wifi_prefix" ]; then
     wifi_route="$(route_for_prefix "$wifi_ip" "$wifi_prefix")"
-    restore_connected_metricless_once "$wifi_route" "$WIFI_IF" "$wifi_ip" wifi-restore && ROUTES_CHANGED=1 || true
+    restore_connected_metricless_once "$wifi_route" "$WIFI_IF" "$wifi_ip" wifi-restore "$wifi_gw" && ROUTES_CHANGED=1 || true
   fi
   if [ -n "$wifi_gw" ]; then
     restore_metricless_default_once "$WIFI_IF" "$wifi_gw" wifi-restore && ROUTES_CHANGED=1 || true
   fi
-  if [ -n "$wifi_gw" ] && [ "$(route_lookup_dev "$wifi_gw")" != "$WIFI_IF" ]; then
-    route_log "fallback verification failed route_get gw=$wifi_gw dev=$(route_lookup_dev "$wifi_gw") expected=$WIFI_IF"
+  if [ -n "$wifi_route" ] && [ -n "$wifi_gw" ]; then
+    if route_lookup_has_via "$wifi_gw"; then
+      via_status=yes
+    else
+      via_status=no
+    fi
+    if ! metricless_connected_verified "$wifi_route" "$WIFI_IF" "$wifi_ip" ||
+       [ "$(route_lookup_dev "$wifi_gw")" != "$WIFI_IF" ] ||
+       [ "$via_status" = yes ]; then
+      route_log "fallback verification failed stage=pre-usb-cleanup gw=$wifi_gw dev=$(route_lookup_dev "$wifi_gw") via=$via_status expected=$WIFI_IF"
+    fi
   fi
   remove_routes_for_prefix_dev default "$USB_IF" "usb fallback default" && ROUTES_CHANGED=1 || true
   if [ -n "$usb_ip" ] && [ -n "$usb_prefix" ]; then
@@ -968,6 +1129,34 @@ restore_wifi_fallback_routes() {
   ip addr flush dev "$USB_IF" 2>/dev/null || true
   [ -f "$STATE_DIR/resolv.conf.wifi" ] && cp "$STATE_DIR/resolv.conf.wifi" "$RESOLV_CONF" 2>/dev/null || true
   flush_route_cache_if_changed
+  if [ -n "$wifi_route" ] && [ -n "$wifi_gw" ]; then
+    if route_lookup_has_via "$wifi_gw"; then
+      via_status=yes
+    else
+      via_status=no
+    fi
+    if ! metricless_connected_verified "$wifi_route" "$WIFI_IF" "$wifi_ip" ||
+       [ "$(route_lookup_dev "$wifi_gw")" != "$WIFI_IF" ] ||
+       [ "$via_status" = yes ]; then
+      route_log "fallback verification failed stage=post-usb-cleanup gw=$wifi_gw dev=$(route_lookup_dev "$wifi_gw") via=$via_status expected=$WIFI_IF; retrying connected restore"
+      restore_connected_metricless_once "$wifi_route" "$WIFI_IF" "$wifi_ip" wifi-restore-post-usb "$wifi_gw" && ROUTES_CHANGED=1 || true
+      ip route flush cache >/dev/null 2>&1 || true
+      if route_lookup_has_via "$wifi_gw"; then
+        via_status=yes
+      else
+        via_status=no
+      fi
+      if ! metricless_connected_verified "$wifi_route" "$WIFI_IF" "$wifi_ip" ||
+         [ "$(route_lookup_dev "$wifi_gw")" != "$WIFI_IF" ] ||
+         [ "$via_status" = yes ]; then
+        route_log "fallback verification failed stage=final gw=$wifi_gw dev=$(route_lookup_dev "$wifi_gw") via=$via_status expected=$WIFI_IF"
+      else
+        route_log "fallback verification ok stage=final gw=$wifi_gw dev=$WIFI_IF via=no"
+      fi
+    else
+      route_log "fallback verification ok stage=post-usb-cleanup gw=$wifi_gw dev=$WIFI_IF via=no"
+    fi
+  fi
   rm -f "$STATE_DIR/usb0.env" "$STATE_DIR/usb0.ip" "$STATE_DIR/usb0.prefix" "$STATE_DIR/usb0.router" "$STATE_DIR/usb0.metric" "$STATE_DIR/ethernet.active"
   route_log "fallback restored wifi_gw=$wifi_gw wifi_ip=$wifi_ip"
 }

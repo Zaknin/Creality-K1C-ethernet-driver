@@ -40,6 +40,10 @@ line_dev() {
   awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }'
 }
 
+line_via() {
+  awk '{ for (i = 1; i <= NF; i++) if ($i == "via") { print $(i + 1); exit } }'
+}
+
 has_dev() {
   line="$1"
   dev="$2"
@@ -129,7 +133,41 @@ delete_route() {
 }
 
 replace_route() {
-  line="$*"
+  prefix="$1"
+  shift
+  dev=""
+  src=""
+  metric=""
+  via=""
+  proto=""
+  scope=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      dev) dev="$2"; shift 2 ;;
+      src) src="$2"; shift 2 ;;
+      metric) metric="$2"; shift 2 ;;
+      via) via="$2"; shift 2 ;;
+      proto) proto="$2"; shift 2 ;;
+      scope) scope="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  if [ "$prefix" = "default" ]; then
+    line="default via $via dev $dev"
+    [ -n "$metric" ] && line="$line metric $metric"
+  else
+    form=plain
+    [ "$scope" = "link" ] && form=scope_link
+    [ "$proto" = "kernel" ] && [ "$scope" = "link" ] && form=proto_kernel
+    case " ${MOCK_RESTORE_ABSENT_FORMS:-} " in
+      *" $form "*) echo "route replace $prefix dev $dev form=$form absent" >> "$MUT"; exit 0 ;;
+    esac
+    line="$prefix dev $dev"
+    [ -n "$proto" ] && line="$line proto $proto"
+    [ -n "$scope" ] && line="$line scope $scope"
+    [ -n "$src" ] && line="$line src $src"
+    [ -n "$metric" ] && line="$line metric $metric"
+  fi
   echo "$line" >> "$ROUTES"
   echo "route replace $line" >> "$MUT"
 }
@@ -188,6 +226,27 @@ addr_flush() {
   dev="$1"
   awk -v d="$dev" '$1 != d' "$ADDRS" > "$R/addrs.$$"
   mv "$R/addrs.$$" "$ADDRS"
+  awk -v d="$dev" '{
+    has_dev=0
+    for (i = 1; i <= NF; i++) if ($i == "dev" && $(i + 1) == d) has_dev=1
+    if (!has_dev) print
+  }' "$ROUTES" > "$R/routes.$$"
+  mv "$R/routes.$$" "$ROUTES"
+  if [ "$dev" = "usb0" ] && [ "${MOCK_DROP_WIFI_CONNECTED_ON_USB_FLUSH:-0}" = "1" ]; then
+    awk '{
+      drop=0
+      if ($1 == "192.0.2.0/24") {
+        has_wlan=0; has_metric=0
+        for (i = 1; i <= NF; i++) {
+          if ($i == "dev" && $(i + 1) == "wlan0") has_wlan=1
+          if ($i == "metric") has_metric=1
+        }
+        if (has_wlan && !has_metric) drop=1
+      }
+      if (!drop) print
+    }' "$ROUTES" > "$R/routes.$$"
+    mv "$R/routes.$$" "$ROUTES"
+  fi
   echo "addr flush $dev" >> "$MUT"
 }
 
@@ -244,6 +303,15 @@ prefix_match() {
   esac
 }
 
+prefix_rank() {
+  case "$1" in
+    */32) echo 32 ;;
+    */24) echo 24 ;;
+    default) echo 0 ;;
+    *) echo 0 ;;
+  esac
+}
+
 route_get() {
   dst="$1"
   src=""
@@ -251,6 +319,7 @@ route_get() {
     src="$3"
   fi
   best=""
+  best_rank=-1
   best_metric=999999
   while IFS= read -r line; do
     [ -n "$line" ] || continue
@@ -258,18 +327,25 @@ route_get() {
     prefix="$1"
     if prefix_match "$dst" "$prefix"; then
       metric="$(printf '%s\n' "$line" | metric_of)"
-      if [ "$metric" -lt "$best_metric" ]; then
+      rank="$(prefix_rank "$prefix")"
+      if [ "$rank" -gt "$best_rank" ] || { [ "$rank" -eq "$best_rank" ] && [ "$metric" -lt "$best_metric" ]; }; then
         best="$line"
+        best_rank="$rank"
         best_metric="$metric"
       fi
     fi
   done < "$ROUTES"
   [ -n "$best" ] || exit 1
   dev="$(printf '%s\n' "$best" | line_dev)"
+  via="$(printf '%s\n' "$best" | line_via)"
   route_src="$(field_after src "$best")"
   [ -n "$route_src" ] || route_src="$src"
   [ -n "$route_src" ] || route_src="0.0.0.0"
-  echo "$dst from $src dev $dev src $route_src"
+  if [ -n "$via" ]; then
+    echo "$dst from $src via $via dev $dev src $route_src"
+  else
+    echo "$dst from $src dev $dev src $route_src"
+  fi
 }
 
 case "${1:-}" in
@@ -340,6 +416,7 @@ new_case() {
   echo up > "$C/sys/wlan0/operstate"
   echo "nameserver 192.0.2.53" > "$C/resolv.conf"
   printf 'wlan0 192.0.2.20 24\n' > "$C/addrs"
+  unset MOCK_FAIL_DEL MOCK_FAIL_CACHE MOCK_FAIL_KERNEL_DEL MOCK_FAIL_CHANGE MOCK_KERNEL_ON_ADDR MOCK_OMIT_FILTERED_DEV MOCK_RESTORE_ABSENT_FORMS MOCK_DROP_WIFI_CONNECTED_ON_USB_FLUSH
 }
 
 run_script() {
@@ -347,6 +424,8 @@ run_script() {
   shift
   PATH="$TMP/bin:$PATH" MOCK_ROOT="$C" MOCK_FAIL_DEL="${MOCK_FAIL_DEL:-0}" MOCK_FAIL_CACHE="${MOCK_FAIL_CACHE:-0}" \
     MOCK_FAIL_KERNEL_DEL="${MOCK_FAIL_KERNEL_DEL:-0}" MOCK_FAIL_CHANGE="${MOCK_FAIL_CHANGE:-0}" \
+    MOCK_RESTORE_ABSENT_FORMS="${MOCK_RESTORE_ABSENT_FORMS:-}" \
+    MOCK_DROP_WIFI_CONNECTED_ON_USB_FLUSH="${MOCK_DROP_WIFI_CONNECTED_ON_USB_FLUSH:-0}" \
     MOCK_KERNEL_ON_ADDR="${MOCK_KERNEL_ON_ADDR:-0}" MOCK_OMIT_FILTERED_DEV="${MOCK_OMIT_FILTERED_DEV:-0}" \
     PACKAGE_DIR="$ROOT/package" STATE_DIR="$C/state" \
     SYS_CLASS_NET="$C/sys" RESOLV_CONF="$C/resolv.conf" LOG_FILE="$C/log" \
@@ -357,6 +436,8 @@ run_script() {
 run_monitor_once() {
   PATH="$TMP/bin:$PATH" MOCK_ROOT="$C" MOCK_FAIL_DEL="${MOCK_FAIL_DEL:-0}" MOCK_FAIL_CACHE="${MOCK_FAIL_CACHE:-0}" \
     MOCK_FAIL_KERNEL_DEL="${MOCK_FAIL_KERNEL_DEL:-0}" MOCK_FAIL_CHANGE="${MOCK_FAIL_CHANGE:-0}" \
+    MOCK_RESTORE_ABSENT_FORMS="${MOCK_RESTORE_ABSENT_FORMS:-}" \
+    MOCK_DROP_WIFI_CONNECTED_ON_USB_FLUSH="${MOCK_DROP_WIFI_CONNECTED_ON_USB_FLUSH:-0}" \
     MOCK_KERNEL_ON_ADDR="${MOCK_KERNEL_ON_ADDR:-0}" MOCK_OMIT_FILTERED_DEV="${MOCK_OMIT_FILTERED_DEV:-0}" \
     PACKAGE_DIR="$ROOT/package" STATE_DIR="$C/state" \
     SYS_CLASS_NET="$C/sys" RESOLV_CONF="$C/resolv.conf" LOG_FILE="$C/log" MONITOR_ONCE=1 \
@@ -401,6 +482,20 @@ assert_lookup_usb() {
     cat "$C/routes" >&2
     exit 1
   }
+}
+
+assert_lookup_wifi_direct() {
+  out="$(PATH="$TMP/bin:$PATH" MOCK_ROOT="$C" ip route get 192.0.2.1)"
+  printf '%s\n' "$out" | grep ' dev wlan0 ' >/dev/null || {
+    echo "FAIL: lookup did not select wlan0: $out" >&2
+    cat "$C/routes" >&2
+    exit 1
+  }
+  if printf '%s\n' "$out" | grep ' via 192.0.2.1 ' >/dev/null; then
+    echo "FAIL: lookup used gateway via itself: $out" >&2
+    cat "$C/routes" >&2
+    exit 1
+  fi
 }
 
 seed_active_state() {
@@ -507,6 +602,15 @@ assert_lookup_usb
 echo "PASS: same-subnet connected routes repaired"
 
 new_case
+printf 'default via 192.0.2.1 dev wlan0\n192.0.2.0/24 dev wlan0 scope link src 192.0.2.20\n' > "$C/routes"
+MOCK_KERNEL_ON_ADDR=1 run_script bound
+assert_count 1 '^192\.0\.2\.0/24 dev wlan0 src 192\.0\.2\.20 metric 300$'
+assert_not_grep '^192\.0\.2\.0/24 dev wlan0 scope link src 192\.0\.2\.20$' "$C/routes"
+assert_grep 'metricless connected delete verified label=wifi .*form=dev_only' "$C/log"
+assert_lookup_usb
+echo "PASS: manual metricless Wi-Fi route converted with verified dev-only delete"
+
+new_case
 printf 'default via 192.0.2.1 dev wlan0\n192.0.2.0/24 dev wlan0 proto kernel scope link src 192.0.2.20\n' > "$C/routes"
 run_script bound
 run_script renew
@@ -555,6 +659,39 @@ assert_grep 'nameserver 192\.0\.2\.53' "$C/resolv.conf"
 echo "PASS: usb cable loss restores wifi fallback"
 
 new_case
+printf 'default via 192.0.2.1 dev usb0 metric 50\ndefault via 192.0.2.1 dev wlan0 metric 300\n192.0.2.0/24 dev usb0 src 192.0.2.10 metric 50\n192.0.2.0/24 dev wlan0 src 192.0.2.20 metric 300\n' > "$C/routes"
+printf 'usb0 192.0.2.10 24\nwlan0 192.0.2.20 24\n' > "$C/addrs"
+seed_active_state
+echo 0 > "$C/sys/usb0/carrier"
+run_monitor_once
+assert_count 1 '^192\.0\.2\.0/24 dev wlan0 scope link src 192\.0\.2\.20$'
+assert_lookup_wifi_direct
+assert_grep 'fallback verification ok stage=post-usb-cleanup' "$C/log"
+echo "PASS: fallback restores verified scope-link Wi-Fi connected route"
+
+new_case
+printf 'default via 192.0.2.1 dev usb0 metric 50\ndefault via 192.0.2.1 dev wlan0 metric 300\n192.0.2.0/24 dev usb0 src 192.0.2.10 metric 50\n192.0.2.0/24 dev wlan0 src 192.0.2.20 metric 300\n' > "$C/routes"
+printf 'usb0 192.0.2.10 24\nwlan0 192.0.2.20 24\n' > "$C/addrs"
+seed_active_state
+echo 0 > "$C/sys/usb0/carrier"
+MOCK_DROP_WIFI_CONNECTED_ON_USB_FLUSH=1 run_monitor_once
+assert_count 1 '^192\.0\.2\.0/24 dev wlan0 scope link src 192\.0\.2\.20$'
+assert_grep 'fallback verification failed stage=post-usb-cleanup' "$C/log"
+assert_grep 'fallback verification ok stage=final' "$C/log"
+assert_lookup_wifi_direct
+echo "PASS: fallback retries Wi-Fi connected restore after USB cleanup"
+
+new_case
+printf 'default via 192.0.2.1 dev usb0 metric 50\ndefault via 192.0.2.1 dev wlan0 metric 300\n192.0.2.0/24 dev usb0 src 192.0.2.10 metric 50\n192.0.2.0/24 dev wlan0 src 192.0.2.20 metric 300\n' > "$C/routes"
+printf 'usb0 192.0.2.10 24\nwlan0 192.0.2.20 24\n' > "$C/addrs"
+seed_active_state
+echo 0 > "$C/sys/usb0/carrier"
+MOCK_RESTORE_ABSENT_FORMS="scope_link proto_kernel plain" run_monitor_once
+assert_not_grep '^192\.0\.2\.0/24 dev wlan0 .*src 192\.0\.2\.20$' "$C/routes"
+assert_grep 'fallback verification failed stage=final .*via=yes' "$C/log"
+echo "PASS: fallback does not treat ping-capable via-gateway state as restored"
+
+new_case
 printf 'default via 192.0.2.1 dev wlan0 metric 100\n192.0.2.0/24 dev wlan0 src 192.0.2.20 metric 100\n' > "$C/routes"
 run_script bound
 assert_count 1 '^default via 192\.0\.2\.1 dev usb0 metric 50$'
@@ -570,12 +707,15 @@ echo "PASS: missing routes tolerated"
 
 new_case
 printf 'default via 192.0.2.1 dev usb0 metric 100\n' > "$C/routes"
-seed_active_state
-if MOCK_FAIL_DEL=1 run_monitor_once >/dev/null 2>&1; then
+if PATH="$TMP/bin:$PATH" MOCK_ROOT="$C" MOCK_FAIL_DEL=1 \
+  PACKAGE_DIR="$ROOT/package" STATE_DIR="$C/state" LOG_FILE="$C/log" \
+  "$SH" -c '. "$0"; delete_one_route_line "$1" "$2" "$3" "$4"' \
+  "$ROOT/package/primary-routing-lib.sh" \
+  'default via 192.0.2.1 dev usb0 metric 100' usb0 usb-default default >/dev/null 2>&1; then
   echo "FAIL: route deletion failure unexpectedly succeeded" >&2
   exit 1
 fi
-assert_grep 'route_delete failed category=default label=usb default .*error=mock forced delete failure' "$C/log"
+assert_grep 'route_delete failed category=default label=usb-default .*error=mock forced delete failure' "$C/log"
 echo "PASS: command failure is bounded and logged"
 
 new_case

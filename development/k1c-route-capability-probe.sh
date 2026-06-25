@@ -35,11 +35,17 @@ WIFI_KERNEL_CONNECTED_EXACT_DELETE="UNSUPPORTED"
 WIFI_METRICLESS_DEFAULT_DELETE="UNSUPPORTED"
 EXPLICIT_CONNECTED_ROUTE_ADD="UNSUPPORTED"
 ROUTE_CACHE_FLUSH="UNSUPPORTED"
+WIFI_CONNECTED_ROUTE_INITIAL_TYPE="unknown"
+WIFI_CONNECTED_ROUTE_DELETE_FORM="none"
+WIFI_CONNECTED_ROUTE_CONVERSION="UNSUPPORTED"
 USB_SOURCE_LOOKUP_AFTER_CONVERSION="unknown"
 PROBE_SSH_PRESERVATION_ROUTE_ACTIVE="NO"
 PROBE_SSH_PRESERVATION_LOOKUP="not_tested"
 USB_GATEWAY_LOOKUP_AFTER_CONVERSION="unknown"
 USB_GENERAL_LAN_LOOKUP_AFTER_CONVERSION="not_tested"
+ROUTE_ONLY_FORWARDING_STATE="NO"
+ROLLBACK_WIFI_CONNECTED_RESTORE_FORM="none"
+ROLLBACK_WIFI_STATE="FAIL"
 SAFE_ROUTE_ONLY_STRATEGY="NO"
 USB_CONNECTED_CONVERTED=0
 WIFI_CONNECTED_CONVERTED=0
@@ -61,11 +67,11 @@ cmd_string() {
 }
 
 run_cmd() {
-  label="$1"
+  cmd_label="$1"
   shift
-  out="$TMP_DIR/$label.out"
-  err="$TMP_DIR/$label.err"
-  section "$label"
+  out="$TMP_DIR/$cmd_label.out"
+  err="$TMP_DIR/$cmd_label.err"
+  section "$cmd_label"
   log "cmd=$(cmd_string "$@")"
   "$@" >"$out" 2>"$err"
   rc=$?
@@ -78,16 +84,16 @@ run_cmd() {
 }
 
 capture_routes() {
-  label="$1"
-  section "$label"
-  ip route show > "$TMP_DIR/$label.routes" 2>"$TMP_DIR/$label.err"
+  capture_label="$1"
+  section "$capture_label"
+  ip route show > "$TMP_DIR/$capture_label.routes" 2>"$TMP_DIR/$capture_label.err"
   rc=$?
   log "cmd=ip route show"
   log "rc=$rc"
   log "stdout:"
-  sed 's/^/  /' "$TMP_DIR/$label.routes" | tee -a "$REPORT"
+  sed 's/^/  /' "$TMP_DIR/$capture_label.routes" | tee -a "$REPORT"
   log "stderr:"
-  sed 's/^/  /' "$TMP_DIR/$label.err" | tee -a "$REPORT"
+  sed 's/^/  /' "$TMP_DIR/$capture_label.err" | tee -a "$REPORT"
   return "$rc"
 }
 
@@ -153,6 +159,44 @@ route_has_metricless_connected() {
       END { exit found ? 0 : 1 }'
 }
 
+metricless_connected_line() {
+  prefix="$1"
+  dev="$2"
+  src="$3"
+  ip route show "$prefix" dev "$dev" 2>/dev/null |
+    awk -v src="$src" '
+      {
+        has_src=0; has_metric=0
+        for (i = 1; i <= NF; i++) {
+          if ($i == "src" && $(i + 1) == src) has_src=1
+          if ($i == "metric") has_metric=1
+        }
+        if (has_src && !has_metric) {
+          print
+          exit
+        }
+      }'
+}
+
+connected_route_initial_type() {
+  line="$1"
+  [ -n "$line" ] || {
+    printf '%s\n' unknown
+    return
+  }
+  printf '%s\n' "$line" |
+    awk '{
+      has_proto=0; has_scope=0
+      for (i = 1; i <= NF; i++) {
+        if ($i == "proto" && $(i + 1) == "kernel") has_proto=1
+        if ($i == "scope" && $(i + 1) == "link") has_scope=1
+      }
+      if (has_proto && has_scope) print "kernel"
+      else if (has_scope) print "manual"
+      else print "unknown"
+    }'
+}
+
 metricless_default_exists() {
   gw="$1"
   dev="$2"
@@ -194,6 +238,19 @@ lookup_dev() {
 lookup_src() {
   ip route get "$1" ${2:+from "$2"} 2>/dev/null |
     awk 'NR == 1 { for (i = 1; i <= NF; i++) if ($i == "src") { print $(i + 1); exit } }'
+}
+
+lookup_has_via() {
+  ip route get "$1" ${2:+from "$2"} 2>/dev/null |
+    awk 'NR == 1 { for (i = 1; i <= NF; i++) if ($i == "via") found=1 } END { exit found ? 0 : 1 }'
+}
+
+direct_gateway_verified() {
+  gw="$1"
+  dev="$2"
+  [ "$(lookup_dev "$gw")" = "$dev" ] || return 1
+  ! lookup_has_via "$gw" || return 1
+  return 0
 }
 
 restore_defaults_for_dev() {
@@ -245,62 +302,114 @@ restore_defaults_for_dev() {
   done < "$file"
 }
 
+remove_defaults_for_dev() {
+  dev="$1"
+  i=0
+  while [ "$i" -lt 8 ]; do
+    line="$(ip route show default dev "$dev" 2>/dev/null | sed -n '1p')"
+    [ -n "$line" ] || return 0
+    set -- $line
+    gw=""
+    metric=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        via) gw="$2"; shift 2 ;;
+        metric) metric="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    if [ -n "$gw" ] && [ -n "$metric" ]; then
+      run_cmd "rollback-del-default-$dev-$i" ip route del default via "$gw" dev "$dev" metric "$metric" || break
+    elif [ -n "$gw" ]; then
+      run_cmd "rollback-del-default-$dev-$i" ip route del default via "$gw" dev "$dev" || break
+    else
+      run_cmd "rollback-del-default-$dev-$i" ip route del default dev "$dev" || break
+    fi
+    i=$((i + 1))
+  done
+}
+
 restore_connected_metricless() {
   dev="$1"
   prefix="$2"
   ip_addr="$3"
   metric="$4"
+  gw="${5:-}"
   [ -n "$prefix" ] && [ -n "$ip_addr" ] || return 0
   run_cmd "rollback-del-explicit-$dev-$metric" ip route del "$prefix" dev "$dev" src "$ip_addr" metric "$metric" || true
-  if ! route_has_metricless_connected "$prefix" "$dev" "$ip_addr"; then
-    for form in proto_kernel scope_link plain; do
-      case "$form" in
-        proto_kernel)
-          run_cmd "rollback-restore-connected-$dev-$form" ip route replace "$prefix" dev "$dev" proto kernel scope link src "$ip_addr" || true
-          ;;
-        scope_link)
-          run_cmd "rollback-restore-connected-$dev-$form" ip route replace "$prefix" dev "$dev" scope link src "$ip_addr" || true
-          ;;
-        plain)
-          run_cmd "rollback-restore-connected-$dev-$form" ip route replace "$prefix" dev "$dev" src "$ip_addr" || true
-          ;;
-      esac
-      route_has_metricless_connected "$prefix" "$dev" "$ip_addr" && break
-    done
-  fi
+  for form in scope_link proto_kernel plain; do
+    case "$form" in
+      scope_link)
+        run_cmd "rollback-restore-connected-$dev-$form" ip route replace "$prefix" dev "$dev" scope link src "$ip_addr" || true
+        ;;
+      proto_kernel)
+        run_cmd "rollback-restore-connected-$dev-$form" ip route replace "$prefix" dev "$dev" proto kernel scope link src "$ip_addr" || true
+        ;;
+      plain)
+        run_cmd "rollback-restore-connected-$dev-$form" ip route replace "$prefix" dev "$dev" src "$ip_addr" || true
+        ;;
+    esac
+    if route_has_metricless_connected "$prefix" "$dev" "$ip_addr"; then
+      if [ -z "$gw" ] || direct_gateway_verified "$gw" "$dev"; then
+        [ "$dev" = "$WIFI_IF" ] && ROLLBACK_WIFI_CONNECTED_RESTORE_FORM="$form"
+        log "rollback_connected_restore_verified dev=$dev prefix=$prefix form=$form"
+        return 0
+      fi
+      if [ -n "$gw" ] && ! lookup_has_via "$gw"; then
+        [ "$dev" = "$WIFI_IF" ] && ROLLBACK_WIFI_CONNECTED_RESTORE_FORM="$form"
+        log "rollback_connected_restore_present_pending_usb_cleanup dev=$dev prefix=$prefix form=$form lookup_dev=$(lookup_dev "$gw")"
+        return 0
+      fi
+    fi
+    if [ -n "$gw" ]; then
+      if lookup_has_via "$gw"; then via_status=yes; else via_status=no; fi
+      log "rollback_connected_restore_verify_failed dev=$dev prefix=$prefix form=$form lookup_dev=$(lookup_dev "$gw") via=$via_status"
+    fi
+  done
+  log "rollback_connected_restore_failed dev=$dev prefix=$prefix"
+  return 1
 }
 
 verify_wifi_rollback() {
+  stage="${1:-final}"
+  ok=1
   section "rollback verification"
   wifi_addr_after="$(first_ipv4 "$WIFI_IF")"
-  log "rollback_wifi_ip=${wifi_addr_after:-none} expected=${WIFI_IP:-none}"
+  log "rollback_stage=$stage rollback_wifi_ip=${wifi_addr_after:-none} expected=${WIFI_IP:-none}"
   if [ "$wifi_addr_after" = "$WIFI_IP" ]; then
-    log "rollback_wifi_address=OK"
+    log "rollback_wifi_address=OK stage=$stage"
   else
-    log "rollback_wifi_address=FAIL"
+    log "rollback_wifi_address=FAIL stage=$stage"
+    ok=0
   fi
   if route_has_metricless_connected "$WIFI_CONNECTED_PREFIX" "$WIFI_IF" "$WIFI_IP"; then
-    log "rollback_wifi_connected_route=OK"
+    log "rollback_wifi_connected_route=OK stage=$stage"
   else
-    log "rollback_wifi_connected_route=FAIL"
+    log "rollback_wifi_connected_route=FAIL stage=$stage"
+    ok=0
   fi
   if metricless_default_exists "$WIFI_GW" "$WIFI_IF"; then
-    log "rollback_wifi_default=OK"
+    log "rollback_wifi_default=OK stage=$stage"
   else
-    log "rollback_wifi_default=FAIL"
+    log "rollback_wifi_default=FAIL stage=$stage"
+    ok=0
   fi
   gw_dev="$(lookup_dev "$WIFI_GW")"
-  log "rollback_gateway_lookup_dev=${gw_dev:-unknown}"
-  if [ "$gw_dev" = "$WIFI_IF" ]; then
-    log "rollback_gateway_lookup=OK"
+  if lookup_has_via "$WIFI_GW"; then via_status=yes; else via_status=no; fi
+  log "rollback_gateway_lookup_dev=${gw_dev:-unknown} stage=$stage via=$via_status"
+  if [ "$gw_dev" = "$WIFI_IF" ] && [ "$via_status" = no ]; then
+    log "rollback_gateway_lookup=OK stage=$stage"
   else
-    log "rollback_gateway_lookup=FAIL"
+    log "rollback_gateway_lookup=FAIL stage=$stage"
+    ok=0
   fi
   if command -v ping >/dev/null 2>&1; then
     run_cmd rollback-ping-gateway ping -c 1 -W 2 "$WIFI_GW" || true
   else
     log "rollback_ping_gateway=not_available"
   fi
+  [ "$ok" = "1" ] || return 1
+  return 0
 }
 
 cleanup() {
@@ -309,10 +418,12 @@ cleanup() {
     run_cmd rollback-del-ssh-host-route ip route del "$SSH_CLIENT_IP/32" dev "$WIFI_IF" || true
     [ -n "$WIFI_GW" ] && run_cmd rollback-del-ssh-host-route-via ip route del "$SSH_CLIENT_IP/32" via "$WIFI_GW" dev "$WIFI_IF" || true
   fi
-  restore_connected_metricless "$WIFI_IF" "$WIFI_CONNECTED_PREFIX" "$WIFI_IP" "$WIFI_METRIC"
   restore_defaults_for_dev "$WIFI_IF" "$TMP_DIR/wifi-defaults.before"
-  restore_connected_metricless "$USB_IF" "$USB_CONNECTED_PREFIX" "$USB_IP" "$USB_METRIC"
-  restore_defaults_for_dev "$USB_IF" "$TMP_DIR/usb-defaults.before"
+  restore_connected_metricless "$WIFI_IF" "$WIFI_CONNECTED_PREFIX" "$WIFI_IP" "$WIFI_METRIC" "$WIFI_GW" || true
+  verify_wifi_rollback immediate && ROLLBACK_WIFI_STATE="OK" || ROLLBACK_WIFI_STATE="FAIL"
+  remove_defaults_for_dev "$USB_IF"
+  [ -n "$USB_CONNECTED_PREFIX" ] && [ -n "$USB_IP" ] && run_cmd rollback-del-usb-explicit ip route del "$USB_CONNECTED_PREFIX" dev "$USB_IF" src "$USB_IP" metric "$USB_METRIC" || true
+  [ -n "$USB_CONNECTED_PREFIX" ] && [ -n "$USB_IP" ] && run_cmd rollback-del-usb-metricless ip route del "$USB_CONNECTED_PREFIX" dev "$USB_IF" || true
   if [ -s "$TMP_DIR/udhcpc.pid" ]; then
     USB_DHCP_PID="$(sed -n '1p' "$TMP_DIR/udhcpc.pid" 2>/dev/null || true)"
     [ -n "$USB_DHCP_PID" ] && run_cmd rollback-stop-temporary-udhcpc kill "$USB_DHCP_PID" || true
@@ -322,7 +433,14 @@ cleanup() {
   if [ "$KEEP_USB" != "1" ] && [ "$STARTED_USB" = "1" ] && [ -x "$PACKAGE_DIR/stop-usb-ethernet.sh" ]; then
     run_cmd rollback-stop-usb "$PACKAGE_DIR/stop-usb-ethernet.sh" || true
   fi
-  verify_wifi_rollback
+  if verify_wifi_rollback post_usb_cleanup; then
+    ROLLBACK_WIFI_STATE="OK"
+  else
+    log "rollback post-usb verification failed; retrying Wi-Fi connected route restore"
+    restore_connected_metricless "$WIFI_IF" "$WIFI_CONNECTED_PREFIX" "$WIFI_IP" "$WIFI_METRIC" "$WIFI_GW" || true
+    run_cmd rollback-refinal-flush-cache ip route flush cache || true
+    verify_wifi_rollback final_retry && ROLLBACK_WIFI_STATE="OK" || ROLLBACK_WIFI_STATE="FAIL"
+  fi
   if [ -e /etc/init.d/S46usb_ethernet_primary ]; then
     log "WARN: boot hook path exists after probe: /etc/init.d/S46usb_ethernet_primary"
   else
@@ -341,11 +459,17 @@ print_matrix() {
     "WIFI_METRICLESS_DEFAULT_DELETE=$WIFI_METRICLESS_DEFAULT_DELETE" \
     "EXPLICIT_CONNECTED_ROUTE_ADD=$EXPLICIT_CONNECTED_ROUTE_ADD" \
     "ROUTE_CACHE_FLUSH=$ROUTE_CACHE_FLUSH" \
+    "WIFI_CONNECTED_ROUTE_INITIAL_TYPE=$WIFI_CONNECTED_ROUTE_INITIAL_TYPE" \
+    "WIFI_CONNECTED_ROUTE_DELETE_FORM=$WIFI_CONNECTED_ROUTE_DELETE_FORM" \
+    "WIFI_CONNECTED_ROUTE_CONVERSION=$WIFI_CONNECTED_ROUTE_CONVERSION" \
     "PROBE_SSH_PRESERVATION_ROUTE_ACTIVE=$PROBE_SSH_PRESERVATION_ROUTE_ACTIVE" \
     "PROBE_SSH_PRESERVATION_LOOKUP=$PROBE_SSH_PRESERVATION_LOOKUP" \
     "USB_GATEWAY_LOOKUP_AFTER_CONVERSION=$USB_GATEWAY_LOOKUP_AFTER_CONVERSION" \
     "USB_GENERAL_LAN_LOOKUP_AFTER_CONVERSION=$USB_GENERAL_LAN_LOOKUP_AFTER_CONVERSION" \
     "USB_SOURCE_LOOKUP_AFTER_CONVERSION=$USB_SOURCE_LOOKUP_AFTER_CONVERSION" \
+    "ROUTE_ONLY_FORWARDING_STATE=$ROUTE_ONLY_FORWARDING_STATE" \
+    "ROLLBACK_WIFI_CONNECTED_RESTORE_FORM=$ROLLBACK_WIFI_CONNECTED_RESTORE_FORM" \
+    "ROLLBACK_WIFI_STATE=$ROLLBACK_WIFI_STATE" \
     "SAFE_ROUTE_ONLY_STRATEGY=$SAFE_ROUTE_ONLY_STRATEGY" | tee -a "$REPORT"
 }
 
@@ -354,8 +478,13 @@ finish() {
   if [ -n "$WATCHDOG_PID" ]; then
     kill "$WATCHDOG_PID" >/dev/null 2>&1 || true
   fi
-  print_matrix
   cleanup
+  if [ "$ROUTE_ONLY_FORWARDING_STATE" = "YES" ] && [ "$ROLLBACK_WIFI_STATE" = "OK" ]; then
+    SAFE_ROUTE_ONLY_STRATEGY="YES"
+  else
+    SAFE_ROUTE_ONLY_STRATEGY="NO"
+  fi
+  print_matrix
   exit "$rc"
 }
 
@@ -471,6 +600,11 @@ test_connected_delete_sequence() {
   prefix="$3"
   ip_addr="$4"
   metric="$5"
+  initial_line="$(metricless_connected_line "$prefix" "$dev" "$ip_addr")"
+  initial_type="$(connected_route_initial_type "$initial_line")"
+  if [ "$label" = "wifi" ]; then
+    WIFI_CONNECTED_ROUTE_INITIAL_TYPE="$initial_type"
+  fi
 
   section "$label explicit connected add"
   if route_has_explicit_connected "$prefix" "$dev" "$ip_addr" "$metric"; then
@@ -510,6 +644,10 @@ test_connected_delete_sequence() {
     if route_has_explicit_connected "$prefix" "$dev" "$ip_addr" "$metric" &&
        ! route_has_metricless_connected "$prefix" "$dev" "$ip_addr"; then
       log "$label delete form $form removed metricless route and preserved explicit route"
+      if [ "$label" = "wifi" ]; then
+        WIFI_CONNECTED_ROUTE_DELETE_FORM="$form"
+        WIFI_CONNECTED_ROUTE_CONVERSION="SUPPORTED"
+      fi
       [ "$form" = "exact" ] && return 0
       return 2
     fi
@@ -606,13 +744,24 @@ USB_GENERAL_LAN_LOOKUP_AFTER_CONVERSION="$(lookup_dev "$GENERAL_LAN_TEST_IP" "$U
 [ -n "$SSH_CLIENT_IP" ] && PROBE_SSH_PRESERVATION_LOOKUP="$(lookup_dev "$SSH_CLIENT_IP" "$USB_IP")"
 [ -n "$PROBE_SSH_PRESERVATION_LOOKUP" ] || PROBE_SSH_PRESERVATION_LOOKUP="unknown"
 USB_SOURCE_SRC="$(lookup_src "$TEST_GW" "$USB_IP")"
+ssh_lookup_ok=1
+[ -n "$SSH_CLIENT_IP" ] && [ "$PROBE_SSH_PRESERVATION_LOOKUP" != "$USB_IF" ] && ssh_lookup_ok=0
 if [ "$USB_CONNECTED_CONVERTED" = "1" ] &&
    [ "$WIFI_CONNECTED_CONVERTED" = "1" ] &&
    [ "$DEFAULTS_CONVERTED" = "1" ] &&
+   route_has_explicit_connected "$USB_CONNECTED_PREFIX" "$USB_IF" "$USB_IP" "$USB_METRIC" &&
+   route_has_explicit_connected "$WIFI_CONNECTED_PREFIX" "$WIFI_IF" "$WIFI_IP" "$WIFI_METRIC" &&
+   ! route_has_metricless_connected "$USB_CONNECTED_PREFIX" "$USB_IF" "$USB_IP" &&
+   ! route_has_metricless_connected "$WIFI_CONNECTED_PREFIX" "$WIFI_IF" "$WIFI_IP" &&
+   metric_default_exists "$TEST_GW" "$USB_IF" "$USB_METRIC" &&
+   metric_default_exists "$WIFI_GW" "$WIFI_IF" "$WIFI_METRIC" &&
+   ! metricless_default_exists "$WIFI_GW" "$WIFI_IF" &&
    [ "$ROUTE_CACHE_FLUSH" = "SUPPORTED" ] &&
    [ "$USB_GATEWAY_LOOKUP_AFTER_CONVERSION" = "$USB_IF" ] &&
+   [ "$USB_GENERAL_LAN_LOOKUP_AFTER_CONVERSION" = "$USB_IF" ] &&
+   [ "$ssh_lookup_ok" = "1" ] &&
    [ "$USB_SOURCE_SRC" = "$USB_IP" ]; then
-  SAFE_ROUTE_ONLY_STRATEGY="YES"
+  ROUTE_ONLY_FORWARDING_STATE="YES"
 fi
 
 if [ "$DETACHED_VERIFY" = "1" ]; then
