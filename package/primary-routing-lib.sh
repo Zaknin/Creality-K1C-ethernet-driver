@@ -220,8 +220,56 @@ connected_matching_count() {
     } END { print n + 0 }'
 }
 
+route_has_metricless_connected() {
+  prefix="$1"
+  dev="$2"
+  src="$3"
+  ip route show "$prefix" dev "$dev" 2>/dev/null |
+    awk -v src="$src" '{
+      has_src=0; has_metric=0
+      for (i = 1; i <= NF; i++) {
+        if ($i == "src" && $(i + 1) == src) has_src=1
+        if ($i == "metric") has_metric=1
+      }
+      if (has_src && !has_metric) found=1
+    } END { exit found ? 0 : 1 }'
+}
+
+metricless_default_exists() {
+  gw="$1"
+  dev="$2"
+  ip route show default dev "$dev" 2>/dev/null |
+    awk -v gw="$gw" '{
+      has_gw=0; has_metric=0
+      for (i = 1; i <= NF; i++) {
+        if ($i == "via" && $(i + 1) == gw) has_gw=1
+        if ($i == "metric") has_metric=1
+      }
+      if (has_gw && !has_metric) found=1
+    } END { exit found ? 0 : 1 }'
+}
+
 route_one_line() {
   ip route show "$1" dev "$2" 2>/dev/null | sed -n '1p'
+}
+
+route_one_stale_default_line() {
+  dev="$1"
+  gw="$2"
+  metric="$3"
+  ip route show default dev "$dev" 2>/dev/null |
+    awk -v desired_gw="$gw" -v desired_metric="$metric" '
+      {
+        has_gw=0; has_metric=0
+        for (i = 1; i <= NF; i++) {
+          if ($i == "via" && $(i + 1) == desired_gw) has_gw=1
+          if ($i == "metric" && $(i + 1) == desired_metric) has_metric=1
+        }
+        if (!has_gw || !has_metric) {
+          print
+          exit
+        }
+      }'
 }
 
 route_one_deletable_line() {
@@ -318,33 +366,42 @@ delete_one_route_line() {
   return "$rc"
 }
 
-change_connected_route_metric() {
+add_connected_route() {
   prefix="$1"
   dev="$2"
   src="$3"
   metric="$4"
   label="$5"
-  original="$6"
-  err="$STATE_DIR/ip-route-change.$$"
-  ip route change "$prefix" dev "$dev" proto kernel scope link src "$src" metric "$metric" 2>"$err"
+  err="$STATE_DIR/ip-route-add.$$"
+  ip route add "$prefix" dev "$dev" src "$src" metric "$metric" 2>"$err"
   rc=$?
   if [ "$rc" -eq 0 ]; then
     rm -f "$err"
-    route_log "route_change ok category=kernel-connected-exact label=$label prefix=$prefix supplied_dev=$dev original=[$original]"
-    return 0
-  fi
-  err_text="$(route_stderr_text "$err")"
-  route_log "route_change failed category=kernel-connected-exact label=$label prefix=$prefix supplied_dev=$dev original=[$original] rc=$rc error=${err_text:-none}"
-  ip route change "$prefix" dev "$dev" src "$src" metric "$metric" 2>"$err"
-  rc=$?
-  if [ "$rc" -eq 0 ]; then
-    rm -f "$err"
-    route_log "route_change ok category=connected-less-specific label=$label prefix=$prefix supplied_dev=$dev original=[$original]"
+    route_log "route_add ok category=explicit-connected label=$label prefix=$prefix supplied_dev=$dev src=$src metric=$metric"
     return 0
   fi
   err_text="$(route_stderr_text "$err")"
   rm -f "$err"
-  route_log "route_change failed category=connected-less-specific label=$label prefix=$prefix supplied_dev=$dev original=[$original] rc=$rc error=${err_text:-none}"
+  route_log "route_add failed category=explicit-connected label=$label prefix=$prefix supplied_dev=$dev src=$src metric=$metric rc=$rc error=${err_text:-none}"
+  return "$rc"
+}
+
+delete_kernel_connected_route() {
+  prefix="$1"
+  dev="$2"
+  src="$3"
+  label="$4"
+  err="$STATE_DIR/ip-route-del-kernel.$$"
+  ip route del "$prefix" dev "$dev" proto kernel scope link src "$src" 2>"$err"
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    rm -f "$err"
+    route_log "route_delete ok category=kernel-connected-exact label=$label prefix=$prefix supplied_dev=$dev src=$src"
+    return 0
+  fi
+  err_text="$(route_stderr_text "$err")"
+  rm -f "$err"
+  route_log "route_delete failed category=kernel-connected-exact label=$label prefix=$prefix supplied_dev=$dev src=$src rc=$rc error=${err_text:-none}"
   return "$rc"
 }
 
@@ -387,6 +444,54 @@ replace_default_route() {
   return "$rc"
 }
 
+replace_metricless_default_route() {
+  dev="$1"
+  gw="$2"
+  label="$3"
+  err="$STATE_DIR/ip-route-default-metricless.$$"
+  ip route replace default via "$gw" dev "$dev" 2>"$err"
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    rm -f "$err"
+    route_log "route_replace ok category=metricless-default label=$label prefix=default supplied_dev=$dev gw=$gw"
+    return 0
+  fi
+  err_text="$(route_stderr_text "$err")"
+  rm -f "$err"
+  route_log "route_replace failed category=metricless-default label=$label prefix=default supplied_dev=$dev gw=$gw rc=$rc error=${err_text:-none}"
+  return "$rc"
+}
+
+replace_metricless_connected_route() {
+  prefix="$1"
+  dev="$2"
+  src="$3"
+  label="$4"
+  form="$5"
+  err="$STATE_DIR/ip-route-connected-metricless.$$"
+  case "$form" in
+    proto_kernel)
+      ip route replace "$prefix" dev "$dev" proto kernel scope link src "$src" 2>"$err"
+      ;;
+    scope_link)
+      ip route replace "$prefix" dev "$dev" scope link src "$src" 2>"$err"
+      ;;
+    *)
+      ip route replace "$prefix" dev "$dev" src "$src" 2>"$err"
+      ;;
+  esac
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    rm -f "$err"
+    route_log "route_replace ok category=metricless-connected label=$label prefix=$prefix supplied_dev=$dev src=$src form=$form"
+    return 0
+  fi
+  err_text="$(route_stderr_text "$err")"
+  rm -f "$err"
+  route_log "route_replace failed category=metricless-connected label=$label prefix=$prefix supplied_dev=$dev src=$src form=$form rc=$rc error=${err_text:-none}"
+  return "$rc"
+}
+
 connected_route_verified() {
   prefix="$1"
   dev="$2"
@@ -394,6 +499,15 @@ connected_route_verified() {
   metric="$4"
   [ "$(connected_matching_count "$prefix" "$dev" "$src" "$metric")" = "1" ] || return 1
   [ "$(connected_bad_count "$prefix" "$dev" "$metric")" = "0" ] || return 1
+  return 0
+}
+
+explicit_connected_route_exists() {
+  prefix="$1"
+  dev="$2"
+  src="$3"
+  metric="$4"
+  [ "$(connected_matching_count "$prefix" "$dev" "$src" "$metric")" -ge 1 ] || return 1
   return 0
 }
 
@@ -406,18 +520,17 @@ default_route_verified() {
   return 0
 }
 
-adjust_kernel_connected_routes() {
+metricless_connected_verified() {
   prefix="$1"
   dev="$2"
   src="$3"
-  metric="$4"
-  label="$5"
-  line="$(route_one_line "$prefix" "$dev")"
-  [ -n "$line" ] || return 0
-  if is_kernel_connected_route_line "$line" "$dev"; then
-    change_connected_route_metric "$prefix" "$dev" "$src" "$metric" "$label" "$line" || true
-  fi
-  return 0
+  route_has_metricless_connected "$prefix" "$dev" "$src"
+}
+
+metricless_default_verified() {
+  dev="$1"
+  gw="$2"
+  metricless_default_exists "$gw" "$dev"
 }
 
 remove_routes_for_prefix_dev() {
@@ -443,13 +556,135 @@ remove_routes_for_prefix_dev() {
   return 1
 }
 
+reconcile_connected_routes_for_dev() {
+  prefix="$1"
+  dev="$2"
+  src="$3"
+  metric="$4"
+  label="$5"
+  tmp="$STATE_DIR/connected-routes.$$"
+  ip route show "$prefix" dev "$dev" 2>/dev/null > "$tmp" || : > "$tmp"
+  awk -v desired_src="$src" -v desired_metric="$metric" '
+    {
+      has_src=0; has_metric=0
+      for (i = 1; i <= NF; i++) {
+        if ($i == "src" && $(i + 1) == desired_src) has_src=1
+        if ($i == "metric" && $(i + 1) == desired_metric) has_metric=1
+      }
+      if (has_src && has_metric && !seen) {
+        seen=1
+        print "KEEP " $0
+      } else {
+        print "DEL " $0
+      }
+    }' "$tmp" > "$tmp.marked"
+  while IFS= read -r marked; do
+    [ -n "$marked" ] || continue
+    action="${marked%% *}"
+    line="${marked#* }"
+    [ "$action" = "KEEP" ] && continue
+    delete_one_route_line "$line" "$dev" "$label connected" connected || true
+  done < "$tmp.marked"
+  rm -f "$tmp" "$tmp.marked"
+  return 0
+}
+
+remove_stale_defaults_for_dev() {
+  dev="$1"
+  gw="$2"
+  metric="$3"
+  label="$4"
+  i=0
+  while [ "$i" -lt "$ROUTE_DELETE_MAX" ]; do
+    line="$(route_one_stale_default_line "$dev" "$gw" "$metric")"
+    [ -n "$line" ] || return 0
+    if ! delete_one_route_line "$line" "$dev" "$label default" default; then
+      route_log "default delete incomplete label=$label dev=$dev desired_gw=$gw desired_metric=$metric original=[$line] disposition=verify-final-state"
+      return 1
+    fi
+    i=$((i + 1))
+  done
+  route_log "default delete limit reached label=$label dev=$dev desired_gw=$gw desired_metric=$metric remaining=$(ip route show default dev "$dev" 2>/dev/null | tr '\n' ';')"
+  return 1
+}
+
+remove_metricless_default_for_dev() {
+  dev="$1"
+  gw="$2"
+  label="$3"
+  if metricless_default_exists "$gw" "$dev"; then
+    delete_one_route_line "default via $gw dev $dev" "$dev" "$label metricless-default" default || true
+  fi
+  metricless_default_exists "$gw" "$dev" && {
+    route_log "metricless default delete incomplete label=$label dev=$dev gw=$gw remaining=$(ip route show default dev "$dev" 2>/dev/null | tr '\n' ';')"
+    return 1
+  }
+  return 0
+}
+
+reconcile_defaults_for_dev() {
+  dev="$1"
+  gw="$2"
+  metric="$3"
+  label="$4"
+  tmp="$STATE_DIR/default-routes.$$"
+  ip route show default dev "$dev" 2>/dev/null > "$tmp" || : > "$tmp"
+  awk -v desired_gw="$gw" -v desired_metric="$metric" '
+    {
+      has_gw=0; has_metric=0
+      for (i = 1; i <= NF; i++) {
+        if ($i == "via" && $(i + 1) == desired_gw) has_gw=1
+        if ($i == "metric" && $(i + 1) == desired_metric) has_metric=1
+      }
+      if (has_gw && has_metric && !seen) {
+        seen=1
+        print "KEEP " $0
+      } else {
+        print "DEL " $0
+      }
+    }' "$tmp" > "$tmp.marked"
+  while IFS= read -r marked; do
+    [ -n "$marked" ] || continue
+    action="${marked%% *}"
+    line="${marked#* }"
+    [ "$action" = "KEEP" ] && continue
+    delete_one_route_line "$line" "$dev" "$label default" default || true
+  done < "$tmp.marked"
+  rm -f "$tmp" "$tmp.marked"
+  return 0
+}
+
+remove_metric_defaults_for_dev() {
+  dev="$1"
+  label="$2"
+  i=0
+  while [ "$i" -lt "$ROUTE_DELETE_MAX" ]; do
+    line="$(ip route show default dev "$dev" 2>/dev/null | awk '{
+      for (i = 1; i <= NF; i++) {
+        if ($i == "metric") {
+          print
+          exit
+        }
+      }
+    }')"
+    [ -n "$line" ] || return 0
+    if ! delete_one_route_line "$line" "$dev" "$label metric-default" default; then
+      route_log "metric default delete incomplete label=$label dev=$dev original=[$line] disposition=verify-final-state"
+      return 1
+    fi
+    i=$((i + 1))
+  done
+  route_log "metric default delete limit reached label=$label dev=$dev remaining=$(ip route show default dev "$dev" 2>/dev/null | tr '\n' ';')"
+  return 1
+}
+
 install_default_once() {
   id_dev="$1"
   id_gw="$2"
   id_metric="$3"
   id_label="$4"
-  remove_routes_for_prefix_dev default "$id_dev" "$id_label default" default || true
   replace_default_route "$id_dev" "$id_gw" "$id_metric" "$id_label" || true
+  reconcile_defaults_for_dev "$id_dev" "$id_gw" "$id_metric" "$id_label" || true
   if default_route_verified "$id_dev" "$id_gw" "$id_metric"; then
     route_log "installed $id_label default gw=$id_gw dev=$id_dev metric=$id_metric"
     return 0
@@ -464,16 +699,53 @@ install_connected_once() {
   ic_src="$3"
   ic_metric="$4"
   ic_label="$5"
-  adjust_kernel_connected_routes "$ic_prefix" "$ic_dev" "$ic_src" "$ic_metric" "$ic_label"
-  remove_routes_for_prefix_dev "$ic_prefix" "$ic_dev" "$ic_label connected" connected || true
-  if ! connected_route_verified "$ic_prefix" "$ic_dev" "$ic_src" "$ic_metric"; then
-    replace_connected_route "$ic_prefix" "$ic_dev" "$ic_src" "$ic_metric" "$ic_label" || true
+  if ! explicit_connected_route_exists "$ic_prefix" "$ic_dev" "$ic_src" "$ic_metric"; then
+    add_connected_route "$ic_prefix" "$ic_dev" "$ic_src" "$ic_metric" "$ic_label" || true
   fi
+  explicit_connected_route_exists "$ic_prefix" "$ic_dev" "$ic_src" "$ic_metric" || {
+    route_log "explicit connected verification failed label=$ic_label prefix=$ic_prefix dev=$ic_dev src=$ic_src metric=$ic_metric remaining=$(ip route show "$ic_prefix" dev "$ic_dev" 2>/dev/null | tr '\n' ';')"
+    return 1
+  }
+  if route_has_metricless_connected "$ic_prefix" "$ic_dev" "$ic_src"; then
+    delete_kernel_connected_route "$ic_prefix" "$ic_dev" "$ic_src" "$ic_label" || true
+  fi
+  reconcile_connected_routes_for_dev "$ic_prefix" "$ic_dev" "$ic_src" "$ic_metric" "$ic_label" || true
   if connected_route_verified "$ic_prefix" "$ic_dev" "$ic_src" "$ic_metric"; then
     route_log "installed $ic_label connected prefix=$ic_prefix src=$ic_src metric=$ic_metric"
     return 0
   fi
   route_log "unsupported-target-routing label=$ic_label connected prefix=$ic_prefix dev=$ic_dev src=$ic_src metric=$ic_metric remaining=$(ip route show "$ic_prefix" dev "$ic_dev" 2>/dev/null | tr '\n' ';')"
+  return 1
+}
+
+restore_connected_metricless_once() {
+  rc_prefix="$1"
+  rc_dev="$2"
+  rc_src="$3"
+  rc_label="$4"
+  metricless_connected_verified "$rc_prefix" "$rc_dev" "$rc_src" && return 0
+  for form in proto_kernel scope_link plain; do
+    replace_metricless_connected_route "$rc_prefix" "$rc_dev" "$rc_src" "$rc_label" "$form" || true
+    if metricless_connected_verified "$rc_prefix" "$rc_dev" "$rc_src"; then
+      route_log "restored $rc_label connected prefix=$rc_prefix dev=$rc_dev src=$rc_src form=$form"
+      return 0
+    fi
+  done
+  route_log "wifi restore connected verification failed label=$rc_label prefix=$rc_prefix dev=$rc_dev src=$rc_src remaining=$(ip route show "$rc_prefix" dev "$rc_dev" 2>/dev/null | tr '\n' ';')"
+  return 1
+}
+
+restore_metricless_default_once() {
+  rd_dev="$1"
+  rd_gw="$2"
+  rd_label="$3"
+  replace_metricless_default_route "$rd_dev" "$rd_gw" "$rd_label" || true
+  remove_metric_defaults_for_dev "$rd_dev" "$rd_label" || true
+  if metricless_default_verified "$rd_dev" "$rd_gw"; then
+    route_log "restored $rd_label default gw=$rd_gw dev=$rd_dev"
+    return 0
+  fi
+  route_log "wifi restore default verification failed label=$rd_label gw=$rd_gw dev=$rd_dev remaining=$(ip route show default dev "$rd_dev" 2>/dev/null | tr '\n' ';')"
   return 1
 }
 
@@ -680,11 +952,13 @@ restore_wifi_fallback_routes() {
   ROUTES_CHANGED=0
   if [ -n "$wifi_ip" ] && [ -n "$wifi_prefix" ]; then
     wifi_route="$(route_for_prefix "$wifi_ip" "$wifi_prefix")"
-    install_connected_once "$wifi_route" "$WIFI_IF" "$wifi_ip" "$WIFI_RESTORE_METRIC" wifi-restore && ROUTES_CHANGED=1 || true
+    restore_connected_metricless_once "$wifi_route" "$WIFI_IF" "$wifi_ip" wifi-restore && ROUTES_CHANGED=1 || true
   fi
   if [ -n "$wifi_gw" ]; then
-    install_default_once "$WIFI_IF" "$wifi_gw" "$WIFI_RESTORE_METRIC" wifi-restore && ROUTES_CHANGED=1 || \
-      ip route replace default via "$wifi_gw" dev "$WIFI_IF" 2>/dev/null || true
+    restore_metricless_default_once "$WIFI_IF" "$wifi_gw" wifi-restore && ROUTES_CHANGED=1 || true
+  fi
+  if [ -n "$wifi_gw" ] && [ "$(route_lookup_dev "$wifi_gw")" != "$WIFI_IF" ]; then
+    route_log "fallback verification failed route_get gw=$wifi_gw dev=$(route_lookup_dev "$wifi_gw") expected=$WIFI_IF"
   fi
   remove_routes_for_prefix_dev default "$USB_IF" "usb fallback default" && ROUTES_CHANGED=1 || true
   if [ -n "$usb_ip" ] && [ -n "$usb_prefix" ]; then

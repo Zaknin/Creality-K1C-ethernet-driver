@@ -362,6 +362,7 @@ EOS
 run_probe() {
   report="$C/report.txt"
   PATH="$TMP/bin:$PATH" MOCK_ROOT="$C" PACKAGE_DIR="$TMP/package" REPORT="$report" \
+    DETACHED_VERIFY="${DETACHED_VERIFY:-0}" DETACHED_ROLLBACK_DELAY=0 \
     SSH_CLIENT="192.0.2.50 55555 22" SSH_CONNECTION="192.0.2.50 55555 192.0.2.20 22" \
     TIMEOUT_SECONDS=20 "$SH" "$ROOT/development/k1c-route-capability-probe.sh" >/dev/null
 }
@@ -394,7 +395,12 @@ assert_grep '^WIFI_METRICLESS_DEFAULT_DELETE=SUPPORTED$' "$C/report.txt"
 assert_grep '^EXPLICIT_CONNECTED_ROUTE_ADD=SUPPORTED$' "$C/report.txt"
 assert_grep '^ROUTE_CACHE_FLUSH=SUPPORTED$' "$C/report.txt"
 assert_grep '^USB_SOURCE_LOOKUP_AFTER_CONVERSION=usb0$' "$C/report.txt"
+assert_grep '^PROBE_SSH_PRESERVATION_ROUTE_ACTIVE=YES$' "$C/report.txt"
+assert_grep '^PROBE_SSH_PRESERVATION_LOOKUP=wlan0$' "$C/report.txt"
+assert_grep '^USB_GATEWAY_LOOKUP_AFTER_CONVERSION=usb0$' "$C/report.txt"
+assert_grep '^USB_GENERAL_LAN_LOOKUP_AFTER_CONVERSION=usb0$' "$C/report.txt"
 assert_grep '^SAFE_ROUTE_ONLY_STRATEGY=YES$' "$C/report.txt"
+assert_grep 'boot hook absent: /etc/init.d/S46usb_ethernet_primary' "$C/report.txt"
 assert_grep 'route add 192\.0\.2\.0/24 dev usb0 src 192\.0\.2\.10 metric 50' "$C/mutations"
 assert_grep 'route del 192\.0\.2\.0/24 dev=usb0 src=192\.0\.2\.10 form=exact' "$C/mutations"
 echo "PASS: probe exact route-only conversion supported"
@@ -427,5 +433,16 @@ MOCK_CONNECTED_DELETE=exact MOCK_DEFAULT_DELETE=only_metricless MOCK_OMIT_FILTER
 assert_grep '^SAFE_ROUTE_ONLY_STRATEGY=YES$' "$C/report.txt"
 assert_not_grep 'cmd=.* dev  metric' "$C/report.txt"
 echo "PASS: probe uses caller-supplied interface when filtered output omits dev"
+
+new_case
+DETACHED_VERIFY=1 MOCK_CONNECTED_DELETE=exact MOCK_DEFAULT_DELETE=only_metricless run_probe
+assert_grep '^PROBE_SSH_PRESERVATION_ROUTE_ACTIVE=NO$' "$C/report.txt"
+assert_grep '^PROBE_SSH_PRESERVATION_LOOKUP=usb0$' "$C/report.txt"
+assert_grep '^USB_GATEWAY_LOOKUP_AFTER_CONVERSION=usb0$' "$C/report.txt"
+assert_grep '^USB_GENERAL_LAN_LOOKUP_AFTER_CONVERSION=usb0$' "$C/report.txt"
+assert_grep '^SAFE_ROUTE_ONLY_STRATEGY=YES$' "$C/report.txt"
+assert_grep 'detached verification sleeping 0s before rollback' "$C/report.txt"
+assert_not_grep '^192\.0\.2\.50/32' "$C/routes"
+echo "PASS: detached probe verification omits ssh preservation route"
 
 echo "route capability probe regression checks passed"

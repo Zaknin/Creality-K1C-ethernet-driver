@@ -134,6 +134,12 @@ replace_route() {
   echo "route replace $line" >> "$MUT"
 }
 
+add_route() {
+  line="$*"
+  echo "$line" >> "$ROUTES"
+  echo "route add $line" >> "$MUT"
+}
+
 change_route() {
   prefix="$1"
   shift
@@ -290,6 +296,7 @@ case "${1:-}" in
     shift
     case "$1" in
       show) shift; show_route "$@" ;;
+      add) shift; add_route "$@" ;;
       del) shift; delete_route "$@" ;;
       replace) shift; replace_route "$@" ;;
       change) shift; change_route "$@" ;;
@@ -422,19 +429,20 @@ echo "PASS: kernel connected deletion failure logs original route and stderr"
 
 new_case
 printf 'default via 192.0.2.1 dev wlan0\n192.0.2.0/24 dev wlan0 proto kernel scope link src 192.0.2.20\n' > "$C/routes"
-MOCK_KERNEL_ON_ADDR=1 MOCK_FAIL_KERNEL_DEL=1 run_script bound
-assert_count 1 '^192\.0\.2\.0/24 dev usb0 proto kernel scope link src 192\.0\.2\.10 metric 50$'
-assert_count 1 '^192\.0\.2\.0/24 dev wlan0 proto kernel scope link src 192\.0\.2\.20 metric 300$'
-assert_grep '^route change 192\.0\.2\.0/24 dev=usb0 src=192\.0\.2\.10 metric=50$' "$C/mutations"
-assert_grep '^route change 192\.0\.2\.0/24 dev=wlan0 src=192\.0\.2\.20 metric=300$' "$C/mutations"
-[ -f "$C/state/usb0.ip" ] || { echo "FAIL: usb state was not written after verified route change" >&2; exit 1; }
-[ -f "$C/state/ethernet.active" ] || { echo "FAIL: ethernet.active missing after verified route change" >&2; exit 1; }
+MOCK_KERNEL_ON_ADDR=1 run_script bound
+assert_count 1 '^192\.0\.2\.0/24 dev usb0 src 192\.0\.2\.10 metric 50$'
+assert_count 1 '^192\.0\.2\.0/24 dev wlan0 src 192\.0\.2\.20 metric 300$'
+assert_grep '^route add 192\.0\.2\.0/24 dev usb0 src 192\.0\.2\.10 metric 50$' "$C/mutations"
+assert_grep '^route del 192\.0\.2\.0/24 dev=usb0 via= metric=$' "$C/mutations"
+assert_grep '^route add 192\.0\.2\.0/24 dev wlan0 src 192\.0\.2\.20 metric 300$' "$C/mutations"
+[ -f "$C/state/usb0.ip" ] || { echo "FAIL: usb state was not written after verified add-delete route conversion" >&2; exit 1; }
+[ -f "$C/state/ethernet.active" ] || { echo "FAIL: ethernet.active missing after verified add-delete route conversion" >&2; exit 1; }
 assert_lookup_usb
-echo "PASS: physical kernel connected route is changed and verified before active state"
+echo "PASS: physical kernel connected route is converted by add-delete before active state"
 
 new_case
 printf 'default via 192.0.2.1 dev wlan0 metric 100\n192.0.2.0/24 dev wlan0 proto kernel scope link src 192.0.2.20\n' > "$C/routes"
-if MOCK_KERNEL_ON_ADDR=1 MOCK_FAIL_CHANGE=1 run_script bound >/dev/null 2>&1; then
+if MOCK_KERNEL_ON_ADDR=1 MOCK_FAIL_KERNEL_DEL=1 run_script bound >/dev/null 2>&1; then
   echo "FAIL: unsupported connected-route capability unexpectedly succeeded" >&2
   exit 1
 fi
@@ -442,7 +450,7 @@ assert_grep 'unsupported-target-routing label=usb connected prefix=192\.0\.2\.0/
 assert_grep 'usb-primary transaction failed reason=usb-connected-route; restoring wifi fallback' "$C/log"
 [ ! -f "$C/state/ethernet.active" ] || { echo "FAIL: ethernet.active written after failed verification" >&2; exit 1; }
 [ ! -f "$C/state/usb0.ip" ] || { echo "FAIL: usb state written after failed verification" >&2; exit 1; }
-assert_grep '^default via 192\.0\.2\.1 dev wlan0 metric 100$' "$C/routes"
+assert_grep '^default via 192\.0\.2\.1 dev wlan0$' "$C/routes"
 echo "PASS: unsupported connected-route capability rolls back without active state"
 
 new_case
@@ -492,8 +500,8 @@ new_case
 printf 'default via 192.0.2.1 dev usb0 metric 50\ndefault via 192.0.2.1 dev wlan0 metric 300\n192.0.2.0/24 dev wlan0 proto kernel scope link src 192.0.2.20\n192.0.2.0/24 dev usb0 proto kernel scope link src 192.0.2.10\n192.0.2.0/24 dev wlan0 src 192.0.2.20 metric 100\n' > "$C/routes"
 seed_active_state
 run_monitor_once
-assert_count 1 '^192\.0\.2\.0/24 dev usb0 proto kernel scope link src 192\.0\.2\.10 metric 50$'
-assert_count 1 '^192\.0\.2\.0/24 dev wlan0 proto kernel scope link src 192\.0\.2\.20 metric 300$'
+assert_count 1 '^192\.0\.2\.0/24 dev usb0 src 192\.0\.2\.10 metric 50$'
+assert_count 1 '^192\.0\.2\.0/24 dev wlan0 src 192\.0\.2\.20 metric 300$'
 assert_not_grep '^192\.0\.2\.0/24 dev wlan0 src 192\.0\.2\.20 metric 100$' "$C/routes"
 assert_lookup_usb
 echo "PASS: same-subnet connected routes repaired"
@@ -530,7 +538,7 @@ printf 'usb0 192.0.2.10 24\nwlan0 192.0.2.20 24\n' > "$C/addrs"
 seed_active_state
 run_monitor_once
 assert_count 1 '^default via 192\.0\.2\.1 dev wlan0 metric 300$'
-assert_count 1 '^192\.0\.2\.0/24 dev wlan0 proto kernel scope link src 192\.0\.2\.20 metric 300$'
+assert_count 1 '^192\.0\.2\.0/24 dev wlan0 src 192\.0\.2\.20 metric 300$'
 assert_lookup_usb
 echo "PASS: wifi route recreation reconciled"
 
@@ -540,7 +548,7 @@ printf 'usb0 192.0.2.10 24\nwlan0 192.0.2.20 24\n' > "$C/addrs"
 seed_active_state
 echo 0 > "$C/sys/usb0/carrier"
 run_monitor_once
-assert_count 1 '^default via 192\.0\.2\.1 dev wlan0 metric 100$'
+assert_count 1 '^default via 192\.0\.2\.1 dev wlan0$'
 assert_not_grep 'dev usb0' "$C/routes"
 [ ! -f "$C/state/ethernet.active" ] || { echo "FAIL: active state remained after cable loss" >&2; exit 1; }
 assert_grep 'nameserver 192\.0\.2\.53' "$C/resolv.conf"

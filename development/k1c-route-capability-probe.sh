@@ -11,6 +11,9 @@ WIFI_METRIC="${WIFI_METRIC:-300}"
 KEEP_USB="${KEEP_USB:-0}"
 ALLOW_NON_WIFI_SSH="${ALLOW_NON_WIFI_SSH:-0}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-90}"
+DETACHED_VERIFY="${DETACHED_VERIFY:-0}"
+DETACHED_ROLLBACK_DELAY="${DETACHED_ROLLBACK_DELAY:-8}"
+GENERAL_LAN_TEST_IP="${GENERAL_LAN_TEST_IP:-8.8.8.8}"
 
 TMP_DIR="/tmp/k1c-route-probe.$$"
 STARTED_USB=0
@@ -33,6 +36,10 @@ WIFI_METRICLESS_DEFAULT_DELETE="UNSUPPORTED"
 EXPLICIT_CONNECTED_ROUTE_ADD="UNSUPPORTED"
 ROUTE_CACHE_FLUSH="UNSUPPORTED"
 USB_SOURCE_LOOKUP_AFTER_CONVERSION="unknown"
+PROBE_SSH_PRESERVATION_ROUTE_ACTIVE="NO"
+PROBE_SSH_PRESERVATION_LOOKUP="not_tested"
+USB_GATEWAY_LOOKUP_AFTER_CONVERSION="unknown"
+USB_GENERAL_LAN_LOOKUP_AFTER_CONVERSION="not_tested"
 SAFE_ROUTE_ONLY_STRATEGY="NO"
 USB_CONNECTED_CONVERTED=0
 WIFI_CONNECTED_CONVERTED=0
@@ -246,7 +253,53 @@ restore_connected_metricless() {
   [ -n "$prefix" ] && [ -n "$ip_addr" ] || return 0
   run_cmd "rollback-del-explicit-$dev-$metric" ip route del "$prefix" dev "$dev" src "$ip_addr" metric "$metric" || true
   if ! route_has_metricless_connected "$prefix" "$dev" "$ip_addr"; then
-    run_cmd "rollback-restore-connected-$dev" ip route replace "$prefix" dev "$dev" src "$ip_addr" || true
+    for form in proto_kernel scope_link plain; do
+      case "$form" in
+        proto_kernel)
+          run_cmd "rollback-restore-connected-$dev-$form" ip route replace "$prefix" dev "$dev" proto kernel scope link src "$ip_addr" || true
+          ;;
+        scope_link)
+          run_cmd "rollback-restore-connected-$dev-$form" ip route replace "$prefix" dev "$dev" scope link src "$ip_addr" || true
+          ;;
+        plain)
+          run_cmd "rollback-restore-connected-$dev-$form" ip route replace "$prefix" dev "$dev" src "$ip_addr" || true
+          ;;
+      esac
+      route_has_metricless_connected "$prefix" "$dev" "$ip_addr" && break
+    done
+  fi
+}
+
+verify_wifi_rollback() {
+  section "rollback verification"
+  wifi_addr_after="$(first_ipv4 "$WIFI_IF")"
+  log "rollback_wifi_ip=${wifi_addr_after:-none} expected=${WIFI_IP:-none}"
+  if [ "$wifi_addr_after" = "$WIFI_IP" ]; then
+    log "rollback_wifi_address=OK"
+  else
+    log "rollback_wifi_address=FAIL"
+  fi
+  if route_has_metricless_connected "$WIFI_CONNECTED_PREFIX" "$WIFI_IF" "$WIFI_IP"; then
+    log "rollback_wifi_connected_route=OK"
+  else
+    log "rollback_wifi_connected_route=FAIL"
+  fi
+  if metricless_default_exists "$WIFI_GW" "$WIFI_IF"; then
+    log "rollback_wifi_default=OK"
+  else
+    log "rollback_wifi_default=FAIL"
+  fi
+  gw_dev="$(lookup_dev "$WIFI_GW")"
+  log "rollback_gateway_lookup_dev=${gw_dev:-unknown}"
+  if [ "$gw_dev" = "$WIFI_IF" ]; then
+    log "rollback_gateway_lookup=OK"
+  else
+    log "rollback_gateway_lookup=FAIL"
+  fi
+  if command -v ping >/dev/null 2>&1; then
+    run_cmd rollback-ping-gateway ping -c 1 -W 2 "$WIFI_GW" || true
+  else
+    log "rollback_ping_gateway=not_available"
   fi
 }
 
@@ -269,10 +322,11 @@ cleanup() {
   if [ "$KEEP_USB" != "1" ] && [ "$STARTED_USB" = "1" ] && [ -x "$PACKAGE_DIR/stop-usb-ethernet.sh" ]; then
     run_cmd rollback-stop-usb "$PACKAGE_DIR/stop-usb-ethernet.sh" || true
   fi
-  if [ -e /etc/init.d/usb_ethernet_primary ]; then
-    log "WARN: boot hook path exists after probe: /etc/init.d/usb_ethernet_primary"
+  verify_wifi_rollback
+  if [ -e /etc/init.d/S46usb_ethernet_primary ]; then
+    log "WARN: boot hook path exists after probe: /etc/init.d/S46usb_ethernet_primary"
   else
-    log "boot hook absent: /etc/init.d/usb_ethernet_primary"
+    log "boot hook absent: /etc/init.d/S46usb_ethernet_primary"
   fi
   run_cmd rollback-final-routes ip route show || true
   rm -rf "$TMP_DIR"
@@ -287,6 +341,10 @@ print_matrix() {
     "WIFI_METRICLESS_DEFAULT_DELETE=$WIFI_METRICLESS_DEFAULT_DELETE" \
     "EXPLICIT_CONNECTED_ROUTE_ADD=$EXPLICIT_CONNECTED_ROUTE_ADD" \
     "ROUTE_CACHE_FLUSH=$ROUTE_CACHE_FLUSH" \
+    "PROBE_SSH_PRESERVATION_ROUTE_ACTIVE=$PROBE_SSH_PRESERVATION_ROUTE_ACTIVE" \
+    "PROBE_SSH_PRESERVATION_LOOKUP=$PROBE_SSH_PRESERVATION_LOOKUP" \
+    "USB_GATEWAY_LOOKUP_AFTER_CONVERSION=$USB_GATEWAY_LOOKUP_AFTER_CONVERSION" \
+    "USB_GENERAL_LAN_LOOKUP_AFTER_CONVERSION=$USB_GENERAL_LAN_LOOKUP_AFTER_CONVERSION" \
     "USB_SOURCE_LOOKUP_AFTER_CONVERSION=$USB_SOURCE_LOOKUP_AFTER_CONVERSION" \
     "SAFE_ROUTE_ONLY_STRATEGY=$SAFE_ROUTE_ONLY_STRATEGY" | tee -a "$REPORT"
 }
@@ -392,7 +450,7 @@ fi
 
 run_cmd route-table-before-tests ip route show || true
 
-if [ -n "$SSH_CLIENT_IP" ]; then
+if [ -n "$SSH_CLIENT_IP" ] && [ "$DETACHED_VERIFY" != "1" ]; then
   section "ssh preservation route"
   if same_24 "$SSH_CLIENT_IP" "$WIFI_IP"; then
     run_cmd add-ssh-client-host-route ip route replace "$SSH_CLIENT_IP/32" dev "$WIFI_IF" src "$WIFI_IP" || true
@@ -400,6 +458,7 @@ if [ -n "$SSH_CLIENT_IP" ]; then
     run_cmd add-ssh-client-host-route ip route replace "$SSH_CLIENT_IP/32" via "$WIFI_GW" dev "$WIFI_IF" src "$WIFI_IP" || true
   fi
   TEMP_SSH_ROUTE=1
+  PROBE_SSH_PRESERVATION_ROUTE_ACTIVE="YES"
   if [ "$(lookup_dev "$SSH_CLIENT_IP" "$WIFI_IP")" != "$WIFI_IF" ]; then
     log "ERROR: cannot verify SSH client host route through $WIFI_IF; aborting"
     finish 1
@@ -526,24 +585,39 @@ else
 fi
 
 section "final lookup verification"
+if [ "$DETACHED_VERIFY" = "1" ] && [ -n "$SSH_CLIENT_IP" ]; then
+  run_cmd final-del-ssh-host-route ip route del "$SSH_CLIENT_IP/32" dev "$WIFI_IF" || true
+  TEMP_SSH_ROUTE=0
+  PROBE_SSH_PRESERVATION_ROUTE_ACTIVE="NO"
+fi
 if run_cmd final-flush-route-cache ip route flush cache; then
   ROUTE_CACHE_FLUSH="SUPPORTED"
 fi
-run_cmd final-lookup-8-8-8-8 ip route get 8.8.8.8 || true
+run_cmd final-lookup-general-lan ip route get "$GENERAL_LAN_TEST_IP" from "$USB_IP" || true
 run_cmd final-lookup-gateway ip route get "$TEST_GW" || true
 run_cmd final-lookup-gateway-from-usb ip route get "$TEST_GW" from "$USB_IP" || true
 [ -n "$SSH_CLIENT_IP" ] && run_cmd final-lookup-ssh-from-usb ip route get "$SSH_CLIENT_IP" from "$USB_IP" || true
 [ -n "$SSH_CLIENT_IP" ] && run_cmd final-lookup-ssh-from-wifi ip route get "$SSH_CLIENT_IP" from "$WIFI_IP" || true
-USB_SOURCE_LOOKUP_AFTER_CONVERSION="$(lookup_dev "$TEST_GW" "$USB_IP")"
-[ -n "$USB_SOURCE_LOOKUP_AFTER_CONVERSION" ] || USB_SOURCE_LOOKUP_AFTER_CONVERSION="unknown"
+USB_GATEWAY_LOOKUP_AFTER_CONVERSION="$(lookup_dev "$TEST_GW" "$USB_IP")"
+[ -n "$USB_GATEWAY_LOOKUP_AFTER_CONVERSION" ] || USB_GATEWAY_LOOKUP_AFTER_CONVERSION="unknown"
+USB_SOURCE_LOOKUP_AFTER_CONVERSION="$USB_GATEWAY_LOOKUP_AFTER_CONVERSION"
+USB_GENERAL_LAN_LOOKUP_AFTER_CONVERSION="$(lookup_dev "$GENERAL_LAN_TEST_IP" "$USB_IP")"
+[ -n "$USB_GENERAL_LAN_LOOKUP_AFTER_CONVERSION" ] || USB_GENERAL_LAN_LOOKUP_AFTER_CONVERSION="unknown"
+[ -n "$SSH_CLIENT_IP" ] && PROBE_SSH_PRESERVATION_LOOKUP="$(lookup_dev "$SSH_CLIENT_IP" "$USB_IP")"
+[ -n "$PROBE_SSH_PRESERVATION_LOOKUP" ] || PROBE_SSH_PRESERVATION_LOOKUP="unknown"
 USB_SOURCE_SRC="$(lookup_src "$TEST_GW" "$USB_IP")"
 if [ "$USB_CONNECTED_CONVERTED" = "1" ] &&
    [ "$WIFI_CONNECTED_CONVERTED" = "1" ] &&
    [ "$DEFAULTS_CONVERTED" = "1" ] &&
-   [ "$USB_SOURCE_LOOKUP_AFTER_CONVERSION" = "$USB_IF" ] &&
+   [ "$ROUTE_CACHE_FLUSH" = "SUPPORTED" ] &&
+   [ "$USB_GATEWAY_LOOKUP_AFTER_CONVERSION" = "$USB_IF" ] &&
    [ "$USB_SOURCE_SRC" = "$USB_IP" ]; then
   SAFE_ROUTE_ONLY_STRATEGY="YES"
 fi
 
+if [ "$DETACHED_VERIFY" = "1" ]; then
+  log "detached verification sleeping ${DETACHED_ROLLBACK_DELAY}s before rollback"
+  sleep "$DETACHED_ROLLBACK_DELAY"
+fi
 log "probe complete; no runtime strategy is accepted until this report is reviewed"
 finish 0
