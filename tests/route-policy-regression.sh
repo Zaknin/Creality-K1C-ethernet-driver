@@ -282,11 +282,30 @@ addr_add() {
 
 link_show() {
   dev="$1"
+  [ -d "$R/sys/$dev" ] || exit 1
   flags="BROADCAST,MULTICAST,UP,LOWER_UP"
   if [ -f "$R/sys/$dev/no-carrier" ]; then
     flags="NO-CARRIER,BROADCAST,MULTICAST,UP"
   fi
   echo "2: $dev: <$flags> mtu 1500 state $(cat "$R/sys/$dev/operstate" 2>/dev/null || echo UP)"
+}
+
+link_set() {
+  if [ "${1:-}" = "dev" ]; then
+    dev="$2"
+    action="$3"
+  else
+    dev="$1"
+    action="$2"
+  fi
+  [ -d "$R/sys/$dev" ] || exit 1
+  echo "link set $dev $action" >> "$MUT"
+  if [ "$action" = "up" ]; then
+    echo up > "$R/sys/$dev/operstate"
+    if [ "$dev" = "usb0" ] && [ "${MOCK_USB_LINK_UP_SETS_CARRIER:-0}" = "1" ]; then
+      echo 1 > "$R/sys/$dev/carrier"
+    fi
+  fi
 }
 
 prefix_match() {
@@ -364,7 +383,7 @@ case "${1:-}" in
   link)
     shift
     case "$1" in
-      set) echo "link set $4" >> "$MUT" ;;
+      set) shift; link_set "$@" ;;
       show) [ "$2" = "dev" ] && link_show "$3" ;;
     esac
     ;;
@@ -401,12 +420,74 @@ esac
 EOS
 chmod 755 "$TMP/bin/ip"
 
+cat > "$TMP/bin/mock-kill" <<'EOS'
+#!/bin/sh
+set -eu
+
+R="$MOCK_ROOT"
+MUT="$R/mutations"
+
+sig=TERM
+case "${1:-}" in
+  -0)
+    pid="$2"
+    [ -f "$R/proc/$pid/alive" ]
+    exit $?
+    ;;
+  -*)
+    sig="${1#-}"
+    shift
+    ;;
+esac
+
+pid="$1"
+echo "kill $sig $pid" >> "$MUT"
+[ -f "$R/proc/$pid/ignore-term" ] && exit 0
+rm -f "$R/proc/$pid/alive"
+exit 0
+EOS
+chmod 755 "$TMP/bin/mock-kill"
+
+cat > "$TMP/bin/nohup" <<'EOS'
+#!/bin/sh
+exec "$@"
+EOS
+chmod 755 "$TMP/bin/nohup"
+
+cat > "$TMP/bin/udhcpc" <<'EOS'
+#!/bin/sh
+set -eu
+
+R="$MOCK_ROOT"
+MUT="$R/mutations"
+iface=""
+pidfile=""
+script=""
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -i) iface="$2"; shift 2 ;;
+    -p) pidfile="$2"; shift 2 ;;
+    -s) script="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+
+echo "udhcpc start iface=$iface pidfile=$pidfile script=$script" >> "$MUT"
+if [ "${MOCK_UDHCPC_BOUND_ON_START:-0}" = "1" ]; then
+  interface="$iface" ip=192.0.2.10 router=192.0.2.1 mask=24 dns="1.1.1.1 9.9.9.9" \
+    "${SH:-/usr/bin/sh}" "$script" bound
+fi
+exit 0
+EOS
+chmod 755 "$TMP/bin/udhcpc"
+
 case_id=0
 
 new_case() {
   case_id=$((case_id + 1))
   C="$TMP/case-$case_id"
-  mkdir -p "$C/state" "$C/sys/usb0" "$C/sys/wlan0"
+  mkdir -p "$C/state" "$C/sys/usb0" "$C/sys/wlan0" "$C/proc"
   : > "$C/routes"
   : > "$C/addrs"
   : > "$C/mutations"
@@ -416,7 +497,7 @@ new_case() {
   echo up > "$C/sys/wlan0/operstate"
   echo "nameserver 192.0.2.53" > "$C/resolv.conf"
   printf 'wlan0 192.0.2.20 24\n' > "$C/addrs"
-  unset MOCK_FAIL_DEL MOCK_FAIL_CACHE MOCK_FAIL_KERNEL_DEL MOCK_FAIL_CHANGE MOCK_KERNEL_ON_ADDR MOCK_OMIT_FILTERED_DEV MOCK_RESTORE_ABSENT_FORMS MOCK_DROP_WIFI_CONNECTED_ON_USB_FLUSH
+  unset MOCK_FAIL_DEL MOCK_FAIL_CACHE MOCK_FAIL_KERNEL_DEL MOCK_FAIL_CHANGE MOCK_KERNEL_ON_ADDR MOCK_OMIT_FILTERED_DEV MOCK_RESTORE_ABSENT_FORMS MOCK_DROP_WIFI_CONNECTED_ON_USB_FLUSH MOCK_USB_LINK_UP_SETS_CARRIER MOCK_UDHCPC_BOUND_ON_START
 }
 
 run_script() {
@@ -426,8 +507,10 @@ run_script() {
     MOCK_FAIL_KERNEL_DEL="${MOCK_FAIL_KERNEL_DEL:-0}" MOCK_FAIL_CHANGE="${MOCK_FAIL_CHANGE:-0}" \
     MOCK_RESTORE_ABSENT_FORMS="${MOCK_RESTORE_ABSENT_FORMS:-}" \
     MOCK_DROP_WIFI_CONNECTED_ON_USB_FLUSH="${MOCK_DROP_WIFI_CONNECTED_ON_USB_FLUSH:-0}" \
+    MOCK_USB_LINK_UP_SETS_CARRIER="${MOCK_USB_LINK_UP_SETS_CARRIER:-0}" \
+    MOCK_UDHCPC_BOUND_ON_START="${MOCK_UDHCPC_BOUND_ON_START:-0}" \
     MOCK_KERNEL_ON_ADDR="${MOCK_KERNEL_ON_ADDR:-0}" MOCK_OMIT_FILTERED_DEV="${MOCK_OMIT_FILTERED_DEV:-0}" \
-    PACKAGE_DIR="$ROOT/package" STATE_DIR="$C/state" \
+    PACKAGE_DIR="$ROOT/package" STATE_DIR="$C/state" PROC_ROOT="$C/proc" KILL_CMD="$TMP/bin/mock-kill" \
     SYS_CLASS_NET="$C/sys" RESOLV_CONF="$C/resolv.conf" LOG_FILE="$C/log" \
     interface=usb0 ip=192.0.2.10 router=192.0.2.1 mask=24 dns="1.1.1.1 9.9.9.9" \
     "$SH" "$ROOT/package/usb0-udhcpc-script.sh" "$event" "$@"
@@ -438,9 +521,12 @@ run_monitor_once() {
     MOCK_FAIL_KERNEL_DEL="${MOCK_FAIL_KERNEL_DEL:-0}" MOCK_FAIL_CHANGE="${MOCK_FAIL_CHANGE:-0}" \
     MOCK_RESTORE_ABSENT_FORMS="${MOCK_RESTORE_ABSENT_FORMS:-}" \
     MOCK_DROP_WIFI_CONNECTED_ON_USB_FLUSH="${MOCK_DROP_WIFI_CONNECTED_ON_USB_FLUSH:-0}" \
+    MOCK_USB_LINK_UP_SETS_CARRIER="${MOCK_USB_LINK_UP_SETS_CARRIER:-0}" \
+    MOCK_UDHCPC_BOUND_ON_START="${MOCK_UDHCPC_BOUND_ON_START:-0}" \
     MOCK_KERNEL_ON_ADDR="${MOCK_KERNEL_ON_ADDR:-0}" MOCK_OMIT_FILTERED_DEV="${MOCK_OMIT_FILTERED_DEV:-0}" \
-    PACKAGE_DIR="$ROOT/package" STATE_DIR="$C/state" \
+    PACKAGE_DIR="$ROOT/package" STATE_DIR="$C/state" PROC_ROOT="$C/proc" KILL_CMD="$TMP/bin/mock-kill" \
     SYS_CLASS_NET="$C/sys" RESOLV_CONF="$C/resolv.conf" LOG_FILE="$C/log" MONITOR_ONCE=1 \
+    USB_RECREATE_CARRIER_WAIT=1 DHCP_RECOVERY_GRACE=0 DHCP_STOP_WAIT=1 DHCP_REPLACEMENT_TIMEOUT=30 \
     "$SH" "$ROOT/package/usb0-route-monitor.sh"
 }
 
@@ -499,6 +585,9 @@ assert_lookup_wifi_direct() {
 }
 
 seed_active_state() {
+  awk '$1 != "usb0"' "$C/addrs" > "$C/addrs.$$"
+  printf 'usb0 192.0.2.10 24\n' >> "$C/addrs.$$"
+  mv "$C/addrs.$$" "$C/addrs"
   printf '192.0.2.10\n' > "$C/state/usb0.ip"
   printf '24\n' > "$C/state/usb0.prefix"
   printf '192.0.2.1\n' > "$C/state/usb0.router"
@@ -507,6 +596,48 @@ seed_active_state() {
   printf '24\n' > "$C/state/wifi.prefix"
   echo active > "$C/state/ethernet.active"
   echo "nameserver 192.0.2.53" > "$C/state/resolv.conf.wifi"
+}
+
+seed_runtime_dhcp_process() {
+  pid="$1"
+  mkdir -p "$C/proc/$pid"
+  : > "$C/proc/$pid/alive"
+  printf '%s\n' "$pid" > "$C/state/udhcpc-usb0.pid"
+  printf 'udhcpc\000-i\000usb0\000-f\000-t\0003\000-T\0004\000-p\000%s\000-s\000%s\000' \
+    "$C/state/udhcpc-usb0.pid" "$ROOT/package/usb0-udhcpc-script.sh" > "$C/proc/$pid/cmdline"
+}
+
+seed_unrelated_process() {
+  pid="$1"
+  mkdir -p "$C/proc/$pid"
+  : > "$C/proc/$pid/alive"
+  printf '%s\n' "$pid" > "$C/state/udhcpc-usb0.pid"
+  printf 'sleep\000999\000' > "$C/proc/$pid/cmdline"
+}
+
+wait_for_active_state() {
+  i=0
+  while [ "$i" -le 5 ]; do
+    [ -f "$C/state/ethernet.active" ] && return 0
+    sleep 1
+    i=$((i + 1))
+  done
+  echo "FAIL: ethernet.active was not restored" >&2
+  cat "$C/log" >&2
+  cat "$C/mutations" >&2
+  exit 1
+}
+
+remove_usb_interface() {
+  rm -rf "$C/sys/usb0"
+  awk '$1 != "usb0"' "$C/addrs" > "$C/addrs.$$"
+  mv "$C/addrs.$$" "$C/addrs"
+}
+
+recreate_usb_interface_down() {
+  mkdir -p "$C/sys/usb0"
+  echo 0 > "$C/sys/usb0/carrier"
+  echo down > "$C/sys/usb0/operstate"
 }
 
 new_case
@@ -736,5 +867,108 @@ seed_active_state
 run_monitor_once
 [ ! -s "$C/mutations" ] || { echo "FAIL: no-op reconciliation mutated routes" >&2; cat "$C/mutations" >&2; exit 1; }
 echo "PASS: no-op reconciliation is quiet"
+
+new_case
+printf 'default via 192.0.2.1 dev usb0 metric 50\ndefault via 192.0.2.1 dev wlan0 metric 300\n192.0.2.0/24 dev usb0 src 192.0.2.10 metric 50\n192.0.2.0/24 dev wlan0 src 192.0.2.20 metric 300\n' > "$C/routes"
+printf 'usb0 192.0.2.10 24\nwlan0 192.0.2.20 24\n' > "$C/addrs"
+seed_active_state
+seed_runtime_dhcp_process 1777
+remove_usb_interface
+run_monitor_once
+assert_count 1 '^default via 192\.0\.2\.1 dev wlan0$'
+[ ! -f "$C/state/ethernet.active" ] || { echo "FAIL: fallback did not clear active state after usb0 disappeared" >&2; exit 1; }
+[ -f "$C/proc/1777/alive" ] || { echo "FAIL: old DHCP process should remain alive until recreated carrier recovery" >&2; exit 1; }
+recreate_usb_interface_down
+: > "$C/mutations"
+MOCK_USB_LINK_UP_SETS_CARRIER=1 MOCK_UDHCPC_BOUND_ON_START=1 run_monitor_once
+wait_for_active_state
+assert_grep 'usb0 interface recreated' "$C/log"
+assert_grep '^link set usb0 up$' "$C/mutations"
+assert_grep '^kill TERM 1777$' "$C/mutations"
+assert_count_file 1 '^udhcpc start iface=usb0 ' "$C/mutations"
+[ ! -f "$C/proc/1777/alive" ] || { echo "FAIL: stale runtime DHCP process was not terminated" >&2; exit 1; }
+assert_count 1 '^default via 192\.0\.2\.1 dev usb0 metric 50$'
+assert_count 1 '^default via 192\.0\.2\.1 dev wlan0 metric 300$'
+assert_count 1 '^192\.0\.2\.0/24 dev usb0 src 192\.0\.2\.10 metric 50$'
+assert_count 1 '^192\.0\.2\.0/24 dev wlan0 src 192\.0\.2\.20 metric 300$'
+assert_lookup_usb
+: > "$C/mutations"
+run_monitor_once
+assert_not_grep '^udhcpc start iface=usb0 ' "$C/mutations"
+echo "PASS: physical usb0 recreation invalidates stale alive DHCP process and starts one replacement"
+
+new_case
+printf 'default via 192.0.2.1 dev wlan0\n192.0.2.0/24 dev wlan0 scope link src 192.0.2.20\n' > "$C/routes"
+printf 'absent\n' > "$C/state/usb0.interface-presence"
+seed_unrelated_process 1888
+: > "$C/mutations"
+MOCK_USB_LINK_UP_SETS_CARRIER=1 run_monitor_once
+assert_not_grep '^kill ' "$C/mutations"
+assert_count_file 1 '^udhcpc start iface=usb0 ' "$C/mutations"
+[ -f "$C/proc/1888/alive" ] || { echo "FAIL: unrelated process was terminated" >&2; exit 1; }
+assert_count 1 '^default via 192\.0\.2\.1 dev wlan0$'
+[ ! -f "$C/state/ethernet.active" ] || { echo "FAIL: inactive unrelated-PID recovery should not mark active without bound" >&2; exit 1; }
+echo "PASS: unrelated old PID is not terminated during DHCP recovery"
+
+new_case
+printf 'default via 192.0.2.1 dev wlan0\n192.0.2.0/24 dev wlan0 scope link src 192.0.2.20\n' > "$C/routes"
+printf 'absent\n' > "$C/state/usb0.interface-presence"
+rm -f "$C/state/udhcpc-usb0.pid"
+: > "$C/mutations"
+MOCK_USB_LINK_UP_SETS_CARRIER=1 run_monitor_once
+assert_count_file 1 '^udhcpc start iface=usb0 ' "$C/mutations"
+assert_not_grep '^kill ' "$C/mutations"
+assert_count 1 '^default via 192\.0\.2\.1 dev wlan0$'
+[ ! -f "$C/state/ethernet.active" ] || { echo "FAIL: missing-PID recovery should not mark active without bound" >&2; exit 1; }
+echo "PASS: missing old PID file starts one DHCP replacement without touching fallback"
+
+new_case
+printf 'default via 192.0.2.1 dev wlan0\n192.0.2.0/24 dev wlan0 scope link src 192.0.2.20\n' > "$C/routes"
+printf 'absent\n' > "$C/state/usb0.interface-presence"
+recreate_usb_interface_down
+: > "$C/mutations"
+MOCK_USB_LINK_UP_SETS_CARRIER=0 run_monitor_once
+assert_grep '^link set usb0 up$' "$C/mutations"
+assert_not_grep '^udhcpc start iface=usb0 ' "$C/mutations"
+assert_count 1 '^default via 192\.0\.2\.1 dev wlan0$'
+[ ! -f "$C/state/ethernet.active" ] || { echo "FAIL: carrier-missing recovery should retain wifi-only fallback" >&2; exit 1; }
+echo "PASS: carrier-missing recreation retains Wi-Fi fallback without DHCP restart"
+
+new_case
+printf 'default via 192.0.2.1 dev wlan0\n192.0.2.0/24 dev wlan0 scope link src 192.0.2.20\n' > "$C/routes"
+printf 'absent\n' > "$C/state/usb0.interface-presence"
+seed_runtime_dhcp_process 1999
+: > "$C/mutations"
+MOCK_USB_LINK_UP_SETS_CARRIER=1 MOCK_UDHCPC_BOUND_ON_START=0 run_monitor_once
+assert_grep '^kill TERM 1999$' "$C/mutations"
+assert_count_file 1 '^udhcpc start iface=usb0 ' "$C/mutations"
+assert_count 1 '^default via 192\.0\.2\.1 dev wlan0$'
+[ ! -f "$C/state/ethernet.active" ] || { echo "FAIL: timed-out replacement should not mark active" >&2; exit 1; }
+MOCK_USB_LINK_UP_SETS_CARRIER=1 MOCK_UDHCPC_BOUND_ON_START=0 run_monitor_once
+assert_count_file 1 '^udhcpc start iface=usb0 ' "$C/mutations"
+assert_count 1 '^default via 192\.0\.2\.1 dev wlan0$'
+echo "PASS: DHCP replacement timeout path preserves fallback and suppresses duplicate launch while pending"
+
+new_case
+printf 'default via 192.0.2.1 dev usb0 metric 50\ndefault via 192.0.2.1 dev wlan0 metric 300\n192.0.2.0/24 dev usb0 src 192.0.2.10 metric 50\n192.0.2.0/24 dev wlan0 src 192.0.2.20 metric 300\n' > "$C/routes"
+printf 'usb0 192.0.2.10 24\nwlan0 192.0.2.20 24\n' > "$C/addrs"
+seed_active_state
+: > "$C/mutations"
+cycle=1
+while [ "$cycle" -le 3 ]; do
+  seed_runtime_dhcp_process "30$cycle"
+  remove_usb_interface
+  run_monitor_once
+  [ ! -f "$C/state/ethernet.active" ] || { echo "FAIL: cycle $cycle did not enter fallback" >&2; exit 1; }
+  recreate_usb_interface_down
+  MOCK_USB_LINK_UP_SETS_CARRIER=1 MOCK_UDHCPC_BOUND_ON_START=1 run_monitor_once
+  wait_for_active_state
+  assert_lookup_usb
+  cycle=$((cycle + 1))
+done
+assert_count_file 3 '^udhcpc start iface=usb0 ' "$C/mutations"
+assert_count 1 '^default via 192\.0\.2\.1 dev usb0 metric 50$'
+assert_count 1 '^default via 192\.0\.2\.1 dev wlan0 metric 300$'
+echo "PASS: three physical-style reconnect cycles restore USB-primary operation"
 
 echo "route policy regression checks passed"

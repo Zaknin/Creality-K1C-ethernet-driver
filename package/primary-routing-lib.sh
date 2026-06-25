@@ -14,6 +14,14 @@ LOG_CONTEXT="${LOG_CONTEXT:-routing}"
 STATE_DIR="${STATE_DIR:-${PACKAGE_DIR:-.}/state}"
 LOG_FILE="${LOG_FILE:-${PACKAGE_DIR:-.}/primary-ethernet.log}"
 ROUTE_LOCK_DIR="${ROUTE_LOCK_DIR:-$STATE_DIR/route.lock}"
+UDHCPC_SCRIPT="${UDHCPC_SCRIPT:-${PACKAGE_DIR:-.}/usb0-udhcpc-script.sh}"
+UDHCPC_PID_FILE="${UDHCPC_PID_FILE:-$STATE_DIR/udhcpc-usb0.pid}"
+PROC_ROOT="${PROC_ROOT:-/proc}"
+KILL_CMD="${KILL_CMD:-kill}"
+USB_RECREATE_CARRIER_WAIT="${USB_RECREATE_CARRIER_WAIT:-8}"
+DHCP_RECOVERY_GRACE="${DHCP_RECOVERY_GRACE:-3}"
+DHCP_STOP_WAIT="${DHCP_STOP_WAIT:-5}"
+DHCP_REPLACEMENT_TIMEOUT="${DHCP_REPLACEMENT_TIMEOUT:-20}"
 
 route_log() {
   printf '%s %s[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$LOG_CONTEXT" "$$" "$*" >> "$LOG_FILE"
@@ -38,6 +46,160 @@ link_has_no_carrier() {
 
 iface_exists() {
   [ -d "$SYS_CLASS_NET/$1" ] || ip link show dev "$1" >/dev/null 2>&1
+}
+
+dhcp_pid_value() {
+  pid="$(file_value "$UDHCPC_PID_FILE" 2>/dev/null || true)"
+  case "$pid" in
+    *[!0-9]*|'') return 1 ;;
+    *) printf '%s\n' "$pid" ;;
+  esac
+}
+
+process_alive() {
+  pid="$1"
+  "$KILL_CMD" -0 "$pid" >/dev/null 2>&1
+}
+
+dhcp_cmdline_matches_runtime() {
+  pid="$1"
+  cmd_file="$PROC_ROOT/$pid/cmdline"
+  [ -r "$cmd_file" ] || return 1
+  cmd="$(tr '\000' ' ' < "$cmd_file" 2>/dev/null || true)"
+  case " $cmd " in
+    *" udhcpc "*|*" /"*"/udhcpc "*) ;;
+    *) return 1 ;;
+  esac
+  case " $cmd " in
+    *" -i $USB_IF "*) ;;
+    *) return 1 ;;
+  esac
+  case " $cmd " in
+    *" -p $UDHCPC_PID_FILE "*) ;;
+    *) return 1 ;;
+  esac
+  case " $cmd " in
+    *" -s $UDHCPC_SCRIPT "*) ;;
+    *) return 1 ;;
+  esac
+  return 0
+}
+
+dhcp_process_valid() {
+  pid="$(dhcp_pid_value 2>/dev/null || true)"
+  [ -n "$pid" ] || return 1
+  process_alive "$pid" || return 1
+  dhcp_cmdline_matches_runtime "$pid" || return 1
+  return 0
+}
+
+dhcp_lease_valid_for_current_usb_interface() {
+  iface_exists "$USB_IF" || return 1
+  [ "$(carrier_value "$USB_IF")" = "1" ] || return 1
+  actual_ip="$(iface_ipv4 "$USB_IF")"
+  state_ip="$(file_value "$STATE_DIR/usb0.ip" 2>/dev/null || true)"
+  [ -n "$actual_ip" ] || return 1
+  [ "$actual_ip" = "$state_ip" ] || return 1
+  [ -f "$STATE_DIR/ethernet.active" ] || return 1
+  if usb_primary_needs_reconcile; then
+    return 1
+  fi
+  return 0
+}
+
+clear_usb_lease_state() {
+  rm -f "$STATE_DIR/usb0.env" "$STATE_DIR/usb0.ip" "$STATE_DIR/usb0.prefix" \
+    "$STATE_DIR/usb0.router" "$STATE_DIR/usb0.metric" "$STATE_DIR/ethernet.active"
+}
+
+clear_dhcp_replacement_pending() {
+  rm -f "$STATE_DIR/udhcpc-usb0.replacement-started"
+}
+
+mark_dhcp_replacement_pending() {
+  route_now > "$STATE_DIR/udhcpc-usb0.replacement-started"
+}
+
+dhcp_replacement_waiting() {
+  [ -f "$STATE_DIR/udhcpc-usb0.replacement-started" ] || return 1
+  started="$(file_value "$STATE_DIR/udhcpc-usb0.replacement-started" 2>/dev/null || echo 0)"
+  now="$(route_now)"
+  age=$((now - started))
+  [ "$age" -lt "$DHCP_REPLACEMENT_TIMEOUT" ] || return 1
+  return 0
+}
+
+wait_for_usb_carrier() {
+  limit="${1:-$USB_RECREATE_CARRIER_WAIT}"
+  i=0
+  while [ "$i" -le "$limit" ]; do
+    carrier="$(carrier_value "$USB_IF")"
+    route_log "carrier_wait second=$i carrier=$carrier operstate=$(operstate_value "$USB_IF")"
+    [ "$carrier" = "1" ] && return 0
+    [ "$i" -eq "$limit" ] && break
+    sleep 1
+    i=$((i + 1))
+  done
+  return 1
+}
+
+wait_for_dhcp_lease_grace() {
+  limit="${1:-$DHCP_RECOVERY_GRACE}"
+  i=0
+  while [ "$i" -le "$limit" ]; do
+    if dhcp_lease_valid_for_current_usb_interface; then
+      clear_dhcp_replacement_pending
+      return 0
+    fi
+    [ "$i" -eq "$limit" ] && break
+    sleep 1
+    i=$((i + 1))
+  done
+  return 1
+}
+
+terminate_runtime_udhcpc() {
+  pid="$(dhcp_pid_value 2>/dev/null || true)"
+  [ -n "$pid" ] || { rm -f "$UDHCPC_PID_FILE"; return 0; }
+  if ! dhcp_process_valid; then
+    route_log "stale DHCP pid file removed pid=$pid reason=not-runtime-owned"
+    rm -f "$UDHCPC_PID_FILE"
+    clear_dhcp_replacement_pending
+    return 0
+  fi
+  route_log "terminating stale runtime DHCP process pid=$pid"
+  "$KILL_CMD" "$pid" >/dev/null 2>&1 || true
+  i=0
+  while [ "$i" -le "$DHCP_STOP_WAIT" ]; do
+    if ! process_alive "$pid"; then
+      rm -f "$UDHCPC_PID_FILE"
+      clear_dhcp_replacement_pending
+      route_log "stale runtime DHCP process exited pid=$pid"
+      return 0
+    fi
+    [ "$i" -eq "$DHCP_STOP_WAIT" ] && break
+    sleep 1
+    i=$((i + 1))
+  done
+  route_log "stale runtime DHCP process still exiting pid=$pid; replacement deferred"
+  return 1
+}
+
+start_runtime_udhcpc() {
+  clear_usb_lease_state
+  clear_dhcp_replacement_pending
+  route_log "starting DHCP recovery process command=udhcpc -i $USB_IF"
+  DHCP_LOG_DIR="$STATE_DIR" STATE_DIR="$STATE_DIR" LOG_FILE="$LOG_FILE" PACKAGE_DIR="${PACKAGE_DIR:-.}" \
+    nohup udhcpc -i "$USB_IF" -f -t 3 -T 4 -p "$UDHCPC_PID_FILE" -s "$UDHCPC_SCRIPT" >> "$LOG_FILE" 2>&1 &
+  echo "$!" > "$UDHCPC_PID_FILE"
+  mark_dhcp_replacement_pending
+}
+
+restart_runtime_udhcpc_for_generation() {
+  if ! terminate_runtime_udhcpc; then
+    return 1
+  fi
+  start_runtime_udhcpc
 }
 
 route_now() {
@@ -1076,6 +1238,7 @@ apply_usb_primary_routes() {
   printf '%s\n' "$USB_METRIC" > "$STATE_DIR/usb0.metric"
   printf '%s\n' "$WIFI_METRIC" > "$STATE_DIR/wifi.metric"
   date -u +%Y-%m-%dT%H:%M:%SZ > "$STATE_DIR/ethernet.active"
+  clear_dhcp_replacement_pending
   route_log "usb primary active ip=$ip/$usb_prefix_value router=$gw dns=${dns:-none} usb_metric=$USB_METRIC wifi_metric=$WIFI_METRIC"
   return 0
 }
@@ -1157,6 +1320,6 @@ restore_wifi_fallback_routes() {
       route_log "fallback verification ok stage=post-usb-cleanup gw=$wifi_gw dev=$WIFI_IF via=no"
     fi
   fi
-  rm -f "$STATE_DIR/usb0.env" "$STATE_DIR/usb0.ip" "$STATE_DIR/usb0.prefix" "$STATE_DIR/usb0.router" "$STATE_DIR/usb0.metric" "$STATE_DIR/ethernet.active"
+  clear_usb_lease_state
   route_log "fallback restored wifi_gw=$wifi_gw wifi_ip=$wifi_ip"
 }
