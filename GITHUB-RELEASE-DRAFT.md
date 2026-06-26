@@ -1,83 +1,159 @@
-# Draft GitHub Release: v1.0.0
+# Draft GitHub Release: v1.0.1
 
-Do not publish until maintainer approval and completion of the immutable draft
-release procedure.
+Do not publish until maintainer approval, asset verification, and physical
+v1.0.1 validation are complete.
 
-## Title
+## 1. What this release is
 
-K1C USB Ethernet v1.0.0
+`v1.0.1` is a patch release candidate for the Creality K1C USB Ethernet runtime.
+It fixes the installer path-resolution defect found in `v1.0.0` and separates
+the prebuilt runtime assets from the source/build asset.
 
-## Summary
+The production module binaries are intended to remain byte-identical to
+`v1.0.0`; this release changes installer behavior, documentation, packaging,
+and release layout.
 
-USB Ethernet support for the explicitly supported 2023-generation Creality K1C
-firmware/kernel ABI using the tested ASIX `0b95:1790` adapter in CDC-NCM mode.
-
-Current verdict:
-
-`GO -- automated and physical qualification complete.`
-
-The corrected runtime provides USB-primary routing with metric `50`, preserves
-Wi-Fi fallback with metric `300`, repairs firmware-recreated route drift,
-recovers from physical USB recreation, and performs verified uninstall cleanup.
-
-## Qualified Candidate
-
-- Uninstall source fix:
-  `25ec035f53ceb778c40da90069190bdadca17faf`
-- Physically tested rebuilt candidate:
-  `0e188c2`
-- Tested TAR SHA-256:
-  `523d51dfa4ff159abeb977f2349584a7417e5a151507bd974418395992b731a9`
-- Tested ZIP SHA-256:
-  `81ed343420812342183bceba5492f13bc34a1cae6090614c761e9ff32cbea502`
-
-The final release archives are rebuilt after qualification-document updates.
-That rebuild changes documentation, release metadata, checksum records, and
-archive hashes only. The executable runtime scripts and kernel modules remain
-byte-identical to the physically qualified candidate; only
-`package/package-manifest.txt` and `package/SHA256SUMS` differ inside
-`package/` for metadata correction. No runtime behavior changed.
-
-## Assets To Attach
-
-- `k1c-usb-ethernet-v1.0.0.tar.gz`
-- `k1c-usb-ethernet-v1.0.0.zip`
-- `SHA256SUMS`
-
-## Compatibility
+## 2. Supported hardware
 
 - Tested printer generation: 2023-generation Creality K1C
-- Kernel `4.4.94`
-- ABI/vermagic `4.4.94 SMP preempt mod_unload MIPS32_R2 32BIT`
-- ASIX `0b95:1790` adapter tested
+- Kernel: `4.4.94`
+- Module ABI/vermagic: `4.4.94 SMP preempt mod_unload MIPS32_R2 32BIT`
+- Tested USB adapter: ASIX `0b95:1790`
 
-Tested only on a 2023-generation Creality K1C running kernel 4.4.94 with the documented module ABI. The 2025 K1C revision has not been tested; compatibility is unknown and is not claimed.
+The 2025 K1C revision has not been tested. Compatibility with the 2025 revision
+is unknown and is not claimed.
 
-## Qualification Highlights
+## 3. Install the prebuilt driver
 
-- production modules and embedded package checksums verified;
-- unattended boot integration passed;
-- exact USB-primary and Wi-Fi-fallback routes verified;
-- three physical USB removal/reconnect cycles passed;
-- Ethernet-cable-only fallback and recovery passed;
-- one monitor and one USB DHCP process maintained;
-- corrected uninstall removed the hook, runtime directory, processes, modules,
-  interface, and USB routes;
-- Wi-Fi connectivity remained available after uninstall.
+Use one runtime asset:
 
-## Historical Warning Disclosure
+- `k1c-usb-ethernet-v1.0.1-runtime.tar.gz`
+- `k1c-usb-ethernet-v1.0.1-runtime.zip`
 
-A bounded `EVENT_RX_MEMORY` warning burst was observed during development.
+The runtime archive already contains compiled `.ko` modules. Runtime users do
+not need an SDK, compiler, kernel source tree, or build tools.
 
-It did not recur during the final instrumented diagnostic transfer, which
-recorded zero RX skb allocation failures, zero RX URB `-ENOMEM` returns, zero
-other RX submission errors, zero `netif_rx()` failures, and zero softnet backlog
-drops.
+Short form:
 
-See `RELEASE-QUALIFICATION.md` for the complete qualification record.
+```sh
+sha256sum -c SHA256SUMS
+scp k1c-usb-ethernet-v1.0.1-runtime.tar.gz root@PRINTER_IP:/tmp/
+ssh root@PRINTER_IP
+cd /tmp
+tar -xzf k1c-usb-ethernet-v1.0.1-runtime.tar.gz
+cd k1c-usb-ethernet-v1.0.1-runtime
+sh ./install.sh --enable-boot
+```
 
-## Publication Control
+The installer can also be invoked by absolute path:
 
-Enable GitHub release immutability before publication. Create the release as a
-draft, attach all final assets, verify the release and assets, and only then
-publish the draft.
+```sh
+sh /tmp/k1c-usb-ethernet-v1.0.1-runtime/install.sh --enable-boot
+```
+
+## 4. Compile from source
+
+Use:
+
+- `k1c-usb-ethernet-v1.0.1-source.tar.gz`
+
+The source archive contains the released module source files, build records,
+and helper scripts. It does not contain compiled `.ko` files, a vendor kernel
+tree, SDK, toolchain, sysroot, or firmware.
+
+The build path still depends on a separately acquired compatible prepared
+Creality/Ingenic X2000 Linux `4.4.94` kernel tree and MIPS toolchain. The source
+bundle is a coherent build workflow, not a guarantee of byte-for-byte
+reproduction without those exact external inputs.
+
+## 5. Verify downloads
+
+Verify all downloaded assets:
+
+```sh
+sha256sum -c SHA256SUMS
+```
+
+`SHA256SUMS` covers exactly:
+
+- `k1c-usb-ethernet-v1.0.1-runtime.tar.gz`
+- `k1c-usb-ethernet-v1.0.1-runtime.zip`
+- `k1c-usb-ethernet-v1.0.1-source.tar.gz`
+
+## 6. Upgrade from v1.0.0
+
+The v1.0.1 installer refuses an existing package-owned installation. Keep Wi-Fi
+SSH available, then:
+
+```sh
+/usr/data/k1c-usb-ethernet/vendor-native-known-good/stop-primary-ethernet.sh
+/usr/data/k1c-usb-ethernet/vendor-native-known-good/uninstall-usb-ethernet.sh --yes
+```
+
+Install v1.0.1 after v1.0.0 is removed.
+
+## 7. Start and status
+
+Installing with `--enable-boot` enables startup after reboot. It does not start
+Ethernet-primary mode immediately.
+
+Start immediately:
+
+```sh
+/usr/data/k1c-usb-ethernet/vendor-native-known-good/start-primary-ethernet.sh
+```
+
+Check status:
+
+```sh
+/usr/data/k1c-usb-ethernet/vendor-native-known-good/ethernet-failover-status.sh
+```
+
+Expected route behavior while USB is healthy:
+
+- USB Ethernet metric `50`
+- Wi-Fi fallback metric `300`
+- gateway lookup from the USB address selects `usb0`
+
+## 8. Uninstall and recovery
+
+Disable boot integration:
+
+```sh
+/usr/data/k1c-usb-ethernet/vendor-native-known-good/disable-primary-ethernet-boot.sh
+```
+
+Uninstall:
+
+```sh
+/usr/data/k1c-usb-ethernet/vendor-native-known-good/uninstall-usb-ethernet.sh --yes
+```
+
+Keep Wi-Fi enabled during installation and testing so you can recover over Wi-Fi
+SSH if USB Ethernet fails.
+
+## 9. Known limitations
+
+- Unofficial community release; not affiliated with or supported by Creality.
+- Physical support claim remains limited to the documented 2023-generation K1C.
+- 2025 K1C compatibility is unknown and not claimed.
+- The source build path requires external vendor/toolchain inputs not
+  redistributed here.
+
+## 10. Source and license compliance
+
+The runtime archive includes compiled Linux kernel modules. The source archive
+includes corresponding module source files and build records.
+
+`COPYING` contains the Linux kernel GPLv2 text. `LICENSE.md` explains the
+mixed-license structure and does not claim that kernel-derived source or modules
+are MIT-licensed.
+
+## 11. Qualification state
+
+Current state:
+
+`GO_candidate_pending_v1.0.1_physical_validation`
+
+Do not publish this release as fully qualified until v1.0.1 physical printer
+validation is complete.
