@@ -13,7 +13,8 @@ by this project:
 
 - a compatible prepared Creality/Ingenic X2000 Linux `4.4.94` kernel tree;
 - generated kernel headers;
-- matching `Module.symvers`;
+- top-level kernel `Module.symvers` only if the target kernel enables
+  `CONFIG_MODVERSIONS`;
 - a compatible MIPS32_R2 little-endian cross-toolchain.
 
 Because those external inputs are not included and no public checksum for the
@@ -32,6 +33,13 @@ source/cdc_ncm.c
 source/Makefile
 source/Module.symvers.known-good
 ```
+
+`source/Module.symvers.known-good` is a reference export list from the three
+released module sources. It is not a complete kernel top-level `Module.symvers`
+and the build scripts do not use it to force a build to pass. In the qualified
+K1C config, `CONFIG_MODVERSIONS` is not set, so the external module build can
+start without a top-level kernel `Module.symvers`; Kbuild generates a
+module-local `Module.symvers` for the three built modules during `modpost`.
 
 The runtime reference module hashes are in:
 
@@ -74,8 +82,13 @@ The build expects a kernel tree with:
 Makefile
 include/generated/utsrelease.h
 include/generated/autoconf.h
-Module.symvers
 ```
+
+If `CONFIG_MODVERSIONS=y`, the tree must also provide the matching top-level
+kernel `Module.symvers`. If `# CONFIG_MODVERSIONS is not set`, as in the
+qualified K1C config recorded in `build-records/config-gates.txt`, a missing
+top-level kernel `Module.symvers` is acceptable and the module build will write
+`output/modules/Module.symvers`.
 
 The generated release must contain:
 
@@ -125,6 +138,7 @@ Expected outputs:
 output/modules/mii.ko
 output/modules/usbnet.ko
 output/modules/cdc_ncm.ko
+output/modules/Module.symvers
 output/modules/SHA256SUMS
 output/modules/build-metadata.txt
 output/logs/build-modules.log

@@ -10,8 +10,11 @@ This release has two separate workflows.
 
 2. **Compile the driver from source**
    Use the source archive. You need a compatible prepared K1C vendor kernel
-   tree, generated headers, `Module.symvers`, and a compatible MIPS toolchain.
-   Use the source archive and its `docs/BUILD-FROM-SOURCE.md` guide.
+   tree, generated headers, and a compatible MIPS toolchain. A top-level
+   kernel `Module.symvers` is required only when the target kernel enables
+   `CONFIG_MODVERSIONS`; the qualified K1C config has it disabled, so Kbuild
+   generates the module-local `Module.symvers` during the external module
+   build. Use the source archive and its `docs/BUILD-FROM-SOURCE.md` guide.
 
 ## Supported Hardware
 

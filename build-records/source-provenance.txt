@@ -13,3 +13,5 @@ notes:
 - The release modules were built from the vendor-native sources above.
 - The public repository includes the copied module sources, build config, toolchain record, GPL license text, and runtime reference module hashes.
 - The diagnostic usbnet build used during qualification is not part of the runtime package or install archive.
+- source/Module.symvers.known-good is a reference export list for the three module sources, not a complete kernel top-level Module.symvers.
+- The qualified K1C config has CONFIG_MODVERSIONS disabled, so the tested external module build generates a module-local Module.symvers during modpost.
