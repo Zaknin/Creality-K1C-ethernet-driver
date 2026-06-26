@@ -32,8 +32,11 @@ recovers from physical USB recreation, and performs verified uninstall cleanup.
   `81ed343420812342183bceba5492f13bc34a1cae6090614c761e9ff32cbea502`
 
 The final release archives are rebuilt after qualification-document updates.
-That rebuild changes documentation and archive hashes only; the qualified
-`package/` runtime payload remains unchanged.
+That rebuild changes documentation, release metadata, checksum records, and
+archive hashes only. The executable runtime scripts and kernel modules remain
+byte-identical to the physically qualified candidate; only
+`package/package-manifest.txt` and `package/SHA256SUMS` differ inside
+`package/` for metadata correction. No runtime behavior changed.
 
 ## Assets To Attach
 

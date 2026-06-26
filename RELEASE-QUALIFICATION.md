@@ -31,10 +31,12 @@ removed while the boot hook and route-monitor process remained. The defect was
 fixed in commit `25ec035`, covered by a TERM-to-SIGKILL regression, rebuilt into
 candidate commit `0e188c2`, and retested successfully on the printer.
 
-The final public archives are rebuilt after qualification-record updates.
-That final rebuild changes documentation and archive hashes only.
-The complete `package/` runtime payload must remain byte-identical to the
-physically qualified candidate.
+The final public archives are rebuilt after qualification-record and release
+metadata updates. The executable runtime scripts and kernel modules remain
+byte-identical to the physically qualified candidate. Only
+`package/package-manifest.txt` and `package/SHA256SUMS` differ for release
+metadata correction. No runtime behavior changed, and no repeat physical test
+was required for this non-executable metadata and checksum-record update.
 
 This verdict does not itself push commits, create a final tag, or publish a
 GitHub release.
