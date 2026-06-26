@@ -21,6 +21,7 @@ Outputs:
   output/modules/mii.ko
   output/modules/usbnet.ko
   output/modules/cdc_ncm.ko
+  output/modules/Module.symvers
   output/logs/build-modules.log
 
 Safety:
@@ -71,11 +72,22 @@ for module in $(expected_modules); do
   cp "$BUILD_WORK_DIR/$module" "$OUTPUT_DIR/$module"
 done
 
+[ -f "$BUILD_WORK_DIR/Module.symvers" ] || die "module-local Module.symvers missing after build"
+cp "$BUILD_WORK_DIR/Module.symvers" "$OUTPUT_DIR/Module.symvers"
+
 {
   printf 'version=%s\n' "1.0.1"
   printf 'kernel_release=%s\n' "$KERNEL_RELEASE"
   printf 'arch=%s\n' "$ARCH"
   printf 'source_dir=%s\n' "$SOURCE_DIR"
+  printf 'kernel_dir=%s\n' "$KERNEL_DIR"
+  printf 'cross_compile=%s\n' "$CROSS_COMPILE"
+  if [ -f "$KERNEL_DIR/Module.symvers" ]; then
+    printf 'kernel_module_symvers=present\n'
+  else
+    printf 'kernel_module_symvers=absent_config_modversions_disabled\n'
+  fi
+  printf 'module_local_symvers=%s\n' "$OUTPUT_DIR/Module.symvers"
   printf 'modules=%s\n' "mii.ko usbnet.ko cdc_ncm.ko"
   date -u '+built_utc=%Y-%m-%dT%H:%M:%SZ'
 } >"$OUTPUT_DIR/build-metadata.txt"

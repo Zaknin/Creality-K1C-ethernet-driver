@@ -22,7 +22,8 @@ Checks:
   - ARCH=mips
   - KERNEL_RELEASE=4.4.94
   - CROSS_COMPILE points to a MIPS gcc
-  - KERNEL_DIR has prepared-kernel markers and Module.symvers
+  - KERNEL_DIR has prepared-kernel markers
+  - Module.symvers is present, or CONFIG_MODVERSIONS is disabled
   - SOURCE_DIR has the three released source files
 
 Safety:
@@ -72,10 +73,32 @@ esac
 [ -f "$KERNEL_DIR/Makefile" ] || die "kernel Makefile missing"
 [ -f "$KERNEL_DIR/include/generated/utsrelease.h" ] || die "prepared kernel marker missing: include/generated/utsrelease.h"
 [ -f "$KERNEL_DIR/include/generated/autoconf.h" ] || die "prepared kernel marker missing: include/generated/autoconf.h"
-[ -f "$KERNEL_DIR/Module.symvers" ] || die "Module.symvers missing; prepare the user-supplied tree first"
 
 if ! grep "4.4.94" "$KERNEL_DIR/include/generated/utsrelease.h" >/dev/null 2>&1; then
   die "prepared kernel release does not contain 4.4.94"
+fi
+
+modversions=unknown
+if [ -f "$KERNEL_DIR/.config" ]; then
+  if grep '^CONFIG_MODVERSIONS=y' "$KERNEL_DIR/.config" >/dev/null 2>&1; then
+    modversions=yes
+  elif grep '^# CONFIG_MODVERSIONS is not set' "$KERNEL_DIR/.config" >/dev/null 2>&1; then
+    modversions=no
+  fi
+elif [ -f "$KERNEL_DIR/include/config/auto.conf" ]; then
+  if grep '^CONFIG_MODVERSIONS=y' "$KERNEL_DIR/include/config/auto.conf" >/dev/null 2>&1; then
+    modversions=yes
+  elif ! grep '^CONFIG_MODVERSIONS=' "$KERNEL_DIR/include/config/auto.conf" >/dev/null 2>&1; then
+    modversions=no
+  fi
+fi
+
+if [ -f "$KERNEL_DIR/Module.symvers" ]; then
+  note "kernel Module.symvers present"
+elif [ "$modversions" = no ]; then
+  note "kernel Module.symvers missing; CONFIG_MODVERSIONS is disabled, so the external module build will generate a module-local Module.symvers"
+else
+  die "Module.symvers missing and CONFIG_MODVERSIONS is not proven disabled; prepare the user-supplied tree first"
 fi
 
 SOURCE_DIR="${SOURCE_DIR:-$ROOT/source}"

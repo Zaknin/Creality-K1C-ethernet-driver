@@ -27,6 +27,13 @@ The source archive includes:
 The build records document the final kernel configuration, config gates,
 toolchain record, source provenance, and reference module hashes.
 
+`source/Module.symvers.known-good` is a reference export list for the three
+released module sources. It is not a complete kernel top-level
+`Module.symvers`, and it is not used as a substitute for a prepared kernel
+tree. For the qualified K1C configuration, `CONFIG_MODVERSIONS` is not set; in
+that configuration Kbuild generates the module-local `Module.symvers` during
+the external module build.
+
 ## Licenses
 
 `COPYING` contains the Linux kernel GPLv2 text.
@@ -49,6 +56,8 @@ toolchain, sysroot, firmware, Creality files, printer credentials, private lab
 evidence, or local build paths.
 
 Users who build from source must separately obtain a legally usable compatible
-vendor kernel tree and MIPS toolchain. The known external source package is
-documented in the source archive's `docs/BUILD-FROM-SOURCE.md`, but this
-project does not redistribute that archive or invent a checksum for it.
+vendor kernel tree and MIPS toolchain. If their target kernel enables
+`CONFIG_MODVERSIONS`, they must also provide the matching top-level kernel
+`Module.symvers`. The known external source package is documented in the source
+archive's `docs/BUILD-FROM-SOURCE.md`, but this project does not redistribute
+that archive or invent a checksum for it.
