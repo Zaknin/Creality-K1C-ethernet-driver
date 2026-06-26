@@ -1,5 +1,5 @@
 package=k1c-usb-ethernet
-version=1.0.0
+version=1.0.1
 install_location=/usr/data/k1c-usb-ethernet/vendor-native-known-good
 boot_hook=/etc/init.d/S46usb_ethernet_primary
 expected_kernel=4.4.94
@@ -20,4 +20,4 @@ routing_mode=dhcp_with_explicit_route_metrics
 route_reconciliation=default_and_same_subnet_connected_routes
 ethernet_metric=50
 wifi_fallback_metric=300
-public_release_verdict=GO_qualification_complete_release_unpublished
+public_release_verdict=GO_candidate_pending_v1.0.1_physical_validation

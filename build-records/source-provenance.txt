@@ -1,6 +1,7 @@
 source_tree=Creality/Ingenic X2000 vendor Linux kernel 4.4.94 SDK, x2000_module_base_linux_sfc_nand_defconfig
 kernel_target=4.4.94
 module_sources_in_public_repo=source/
+build_records_in_public_repo=build-records/
 
 source_hashes:
 0db03aa90317ce37997b8fcc937775a4bcfa92cbd3577ea1180d75ef0768093b  source/mii.c
@@ -10,5 +11,5 @@ d7e9c698cb91685667164ae3163cfd5fd433650b82ac8017bcf26b236073eb3d  source/cdc_ncm
 
 notes:
 - The release modules were built from the vendor-native sources above.
-- The public repository includes the copied module sources, build config, toolchain record, GPL license text, and module hashes.
+- The public repository includes the copied module sources, build config, toolchain record, GPL license text, and runtime reference module hashes.
 - The diagnostic usbnet build used during qualification is not part of the runtime package or install archive.
