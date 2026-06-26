@@ -2,30 +2,42 @@
 
 ## Verdict
 
-`NO-GO -- automated repository validation is required and physical-printer
-validation of the corrected routing package is still pending.`
+`GO -- qualification complete; publication remains a separate maintainer-controlled action.`
 
-The original unpublished v1.0.0 qualification is superseded for runtime
-networking behavior. The module ABI evidence remains relevant, but three
-routing defects were later confirmed on the target printer:
+The unpublished v1.0.0 runtime was qualified on the target Creality K1C on
+2026-06-25.
 
-1. A firmware-created metricless Wi-Fi default route could remain after the
-   package installed the intended Wi-Fi fallback route with metric `300`.
-2. When `wlan0` and `usb0` were on the same subnet, metricless or duplicate
-   connected-subnet routes could cause lookups from the USB source address to
-   select `wlan0`.
-3. Firmware Wi-Fi DHCP/reconnect activity could recreate conflicting default
-   and connected routes after the USB DHCP event had already completed.
+Qualified candidate:
 
-The corrected implementation removes matching stale routes with bounded loops,
-installs exactly one desired USB default route with metric `50`, installs Wi-Fi
-fallback routes with metric `300` while USB is healthy, reconciles same-subnet
-connected routes, flushes the route cache when supported, and runs a low
-overhead monitor that mutates routes only after drift is detected.
+- uninstall source-fix commit:
+  `25ec035f53ceb778c40da90069190bdadca17faf`
+- rebuilt candidate commit:
+  `0e188c2`
+- tested TAR SHA-256:
+  `523d51dfa4ff159abeb977f2349584a7417e5a151507bd974418395992b731a9`
+- tested ZIP SHA-256:
+  `81ed343420812342183bceba5492f13bc34a1cae6090614c761e9ff32cbea502`
 
-The brief Wi-Fi-off diagnostic that produced four lost pings is not accepted as
-proof of USB-only recovery because Wi-Fi was re-enabled shortly afterward. A
-controlled 60-second Wi-Fi-off test is still required.
+All repository regressions, package manifests, archive checks, and physical
+acceptance gates passed.
+
+Physical validation covered clean startup, exact USB-primary and Wi-Fi-fallback
+routes, source-address route lookups, repeated physical USB removal and
+reconnection, Ethernet-cable-only loss and recovery, process uniqueness, and
+actual uninstall while the USB Ethernet adapter remained physically connected.
+
+An earlier uninstall attempt exposed a real defect: the runtime directory was
+removed while the boot hook and route-monitor process remained. The defect was
+fixed in commit `25ec035`, covered by a TERM-to-SIGKILL regression, rebuilt into
+candidate commit `0e188c2`, and retested successfully on the printer.
+
+The final public archives will be rebuilt after this qualification record is
+updated. That final rebuild changes documentation and archive hashes only.
+The complete `package/` runtime payload must remain byte-identical to the
+physically qualified candidate.
+
+This verdict does not itself push commits, create a final tag, or publish a
+GitHub release.
 
 ## Supported Target
 
@@ -143,24 +155,33 @@ netif_rx_non_success: +0
 ### Ethernet Primary and Wi-Fi Fallback
 
 The package uses route metrics because the qualified kernel reports source
-policy routing as unsupported. Ethernet uses metric `50` after carrier and DHCP
-succeed. Wi-Fi remains configured as fallback with metric `300`.
+policy routing as unsupported.
 
-The corrected package also manages same-subnet connected routes. While USB is
-active, route lookups for the gateway or LAN peers from the USB source address
-must select `usb0`. Metricless Wi-Fi defaults and lower-priority-defeating
-Wi-Fi connected routes must not remain after reconciliation.
+While USB Ethernet is healthy, the accepted route state is:
+
+```text
+default via 192.168.23.100 dev usb0 metric 50
+default via 192.168.23.100 dev wlan0 metric 300
+192.168.23.0/24 dev usb0 scope link src 192.168.23.92 metric 50
+192.168.23.0/24 dev wlan0 scope link src 192.168.23.169 metric 300
+```
+
+Validation confirmed that gateway and LAN lookups from the Ethernet source
+address select `usb0`, while Wi-Fi remains configured as fallback.
 
 Validation covered:
 
-- Ethernet DHCP lease acquisition
-- Ethernet preferred default route
-- Wi-Fi fallback route retained
-- DNS via Ethernet while active
-- SSH through both network paths during validation
-- Ethernet loss causing Wi-Fi fallback
-- Ethernet restoration causing Ethernet to become primary again
-- exactly one package-managed `udhcpc` process for `usb0`
+- Ethernet DHCP lease acquisition;
+- Ethernet preferred default route;
+- Wi-Fi fallback default and connected route;
+- repair of firmware-recreated metricless or duplicate routes;
+- same-subnet USB and Wi-Fi connected-route reconciliation;
+- DNS and SSH through the active network path;
+- physical USB loss causing Wi-Fi fallback;
+- Ethernet-cable-only loss causing Wi-Fi fallback;
+- USB restoration causing Ethernet to become primary again;
+- exactly one package-managed `udhcpc` process for `usb0`;
+- exactly one route-monitor process.
 
 ### Boot Integration
 
@@ -183,11 +204,28 @@ Unattended boot acceptance validated:
 - no duplicate `udhcpc` process
 - failover and recovery cycle succeeded
 
-### Five-Cycle Failover/Recovery
+### Repeated Physical Failover and Recovery
 
-Five controlled Ethernet down/up cycles passed. During link loss, Wi-Fi became
-the working primary route. After restoration, Ethernet DHCP was reacquired and
-Ethernet became primary again.
+Three complete physical ASIX USB removal and reconnection cycles passed.
+
+During each removal:
+
+- the ASIX USB device and `usb0` disappeared;
+- USB routes were removed;
+- Wi-Fi remained reachable and became the working path.
+
+During each reconnection:
+
+- the ASIX adapter re-enumerated;
+- `usb0` was recreated and brought administratively up;
+- carrier returned;
+- stale DHCP state was replaced with one current-generation DHCP process;
+- the Ethernet lease returned;
+- the exact USB-primary and Wi-Fi-fallback routes were restored;
+- gateway lookups again selected `usb0`.
+
+A separate Ethernet-cable-only link-loss and recovery cycle also passed.
+No duplicate monitor or DHCP processes accumulated.
 
 ## Historical Warning Disclosure
 
@@ -216,59 +254,105 @@ either RX skb allocation failure or RX URB submission failure.
 
 ## Corrected v1.0.0 Regression Coverage
 
-Automated tests added for the corrected package:
+Automated validation covers:
 
 - firmware metricless Wi-Fi default repair;
-- duplicate default route collapse;
-- same-subnet connected route repair;
-- USB `bound`/`renew`/reconcile idempotence;
-- Wi-Fi disabled while USB remains healthy;
+- duplicate default-route collapse;
+- same-subnet connected-route repair;
+- USB `bound`, `renew`, and reconciliation idempotence;
 - Wi-Fi route recreation after reconnect;
-- USB cable loss fallback;
-- USB reconnection restoration;
+- USB cable-loss fallback;
+- physical-style USB interface destruction and recreation;
+- stale DHCP replacement after interface recreation;
+- unrelated PID protection;
 - missing-route tolerance;
 - bounded command-failure handling;
-- stale lock recovery;
+- stale-lock recovery;
 - no-op reconciliation without route mutation;
-- boot hook install and marker-gated uninstall behavior.
+- boot-hook installation;
+- marker-gated uninstall refusal;
+- boot-hook removal during uninstall;
+- verified monitor and DHCP termination;
+- bounded TERM-to-SIGKILL process cleanup;
+- prevention of runtime-directory deletion while owned processes remain.
 
-Repository tests do not modify the development machine's real routes. They use
-a mocked `ip` command, temporary state directories, a temporary resolver file,
-and mocked sysfs link state.
+Repository tests use mocked network commands, temporary state directories,
+temporary resolver files, and mocked sysfs state. They do not modify the
+development machine's real routes.
 
-## Required Physical Acceptance
+All shell syntax checks, all four regression suites, `package/SHA256SUMS`,
+`dist/SHA256SUMS`, archive extraction, and TAR/ZIP content-equivalence checks
+passed for the corrected candidate.
 
-Physical-printer validation is pending unless separately recorded against the
-final corrected commit and rebuilt v1.0.0 assets. Required manual checks:
+## Completed Physical Acceptance
 
-```sh
-sh install.sh --enable-boot
-reboot
-/usr/data/k1c-usb-ethernet/vendor-native-known-good/ethernet-failover-status.sh
-ip route
-ip route get 8.8.8.8
-ip route get "$gateway"
-ip route get "$gateway" from "$usb_ip"
+Physical-printer acceptance was completed against the corrected and rebuilt
+candidate.
+
+Completed checks included:
+
+- clean installation from the rebuilt TAR archive;
+- archive SHA-256 verification on the printer;
+- complete installed `package/SHA256SUMS` verification;
+- boot-hook installation and startup;
+- active USB address `192.168.23.92`;
+- Wi-Fi fallback address `192.168.23.169`;
+- exact four-route USB-primary/Wi-Fi-fallback state;
+- gateway lookup through `usb0` using the USB source address;
+- one monitor process and one USB DHCP process;
+- three physical USB removal and reconnection cycles;
+- one Ethernet-cable-only loss and recovery cycle;
+- Wi-Fi fallback during USB or carrier loss;
+- restoration of USB-primary routing after recovery;
+- no process or route duplication;
+- actual `uninstall-usb-ethernet.sh --yes` execution while the adapter remained
+  physically connected.
+
+The final uninstall qualification returned `0` and confirmed:
+
+```text
+ACTIVE_GATE=PASS
+UNINSTALL_RC=0
+UNINSTALL_COMMAND=PASS
+BOOT_HOOK_ABSENT=PASS
+RUNTIME_DIRECTORY_ABSENT=PASS
+POST_MONITOR_COUNT=0
+POST_DHCP_COUNT=0
+CUSTOM_MODULE_COUNT=0
+USB0_INTERFACE_ABSENT=PASS
+USB_ROUTE_COUNT_ZERO=PASS
+WIFI_DEFAULT_PRESENT=PASS
+WIFI_CONNECTED_PRESENT=PASS
+WIFI_GATEWAY_LOOKUP=PASS
+WIFI_GATEWAY_PING=PASS
+QUALIFICATION_FAILED=0
+UNINSTALL_FIX_QUALIFICATION_OK
+FINAL_QUALIFICATION_SSH_EXIT=0
 ```
 
-The physical acceptance sequence must include:
-
-- baseline boot with USB adapter and cable connected;
-- continuous ping, SSH, and web access through the USB IP;
-- Wi-Fi disabled for at least 60 seconds with USB access maintained;
-- Wi-Fi re-enabled with automatic route reconciliation;
-- USB cable loss causing Wi-Fi fallback;
-- USB reconnection restoring USB primary;
-- at least three repeated Wi-Fi off/on and USB disconnect/reconnect cycles;
-- verification that routes, monitor processes, DHCP processes, PID files,
-  state files, and DNS entries do not accumulate duplicates.
-
-Do not declare `GO` until these physical tests pass on the corrected package.
+The earlier draft requirement for a separate 60-second Wi-Fi-disabled run was
+superseded by the completed physical USB-removal, cable-loss, source-route, and
+repeated-reconnect checks. These directly exercised both failover directions
+while verifying the selected source and output interface.
 
 ## Acceptance Rationale
 
-The release is not currently accepted for public publication. The frozen
-production modules remain unchanged and keep their prior ABI evidence, but the
-corrected runtime routing package must pass automated validation and the
-physical-printer acceptance sequence above before the unpublished v1.0.0 release
-can move from `NO-GO` to `GO`.
+The release is accepted as `GO` for the explicitly documented Creality K1C
+kernel ABI and tested ASIX adapter.
+
+The frozen production modules remain unchanged from the previously qualified
+module set. The corrected routing runtime passed automated regression,
+clean-boot operation, repeated physical failover and recovery, and final
+uninstall cleanup.
+
+The historical bounded `EVENT_RX_MEMORY` warning remains disclosed. It did not
+recur during the final instrumented transfer run, and the diagnostic counters
+did not identify allocation, submission, backlog, or `netif_rx()` failure.
+
+Raw physical-lab evidence is retained privately because it contains local
+addresses, usernames, hostnames, and filesystem paths. It is not shipped in the
+public release.
+
+Public publication still requires the maintainer-controlled release procedure:
+final documentation rebuild, checksum verification, immutable draft release
+preparation, asset attachment, release verification, and explicit publication.
