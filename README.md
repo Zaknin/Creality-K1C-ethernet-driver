@@ -45,8 +45,9 @@ The prebuilt v1.0.1 runtime has been physically tested with:
 - Linux kernel `4.4.94`
 - Module vermagic:
   `4.4.94 SMP preempt mod_unload MIPS32_R2 32BIT`
-- ASIX USB Ethernet adapter ID:
-  `0b95:1790`
+- Tested with:
+- UGREEN UR111 USB 3.0 to Gigabit Ethernet
+- UGREEN CR475 USB 3.0 to Ethernet Adapter, 5 in 1 Multiport Hub
 
 The 2025 K1C revision has not been tested. Compatibility with that revision is unknown and is not claimed.
 
