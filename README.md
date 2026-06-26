@@ -4,7 +4,7 @@ Unofficial USB Ethernet support for the Creality K1C printer.
 
 ## Latest Release
 
-The latest qualified release is:
+The latest release is:
 
 **[K1C USB Ethernet v1.0.1](https://github.com/Zaknin/Creality-K1C-ethernet-driver/releases/tag/v1.0.1)**
 
