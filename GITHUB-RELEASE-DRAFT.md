@@ -1,19 +1,37 @@
-# Draft GitHub Release: v1.0.1
-
-Do not publish until maintainer approval, asset verification, and physical
-v1.0.1 validation are complete.
+# GitHub Release Notes: v1.0.1
 
 ## 1. What this release is
 
-`v1.0.1` is a patch release candidate for the Creality K1C USB Ethernet runtime.
-It fixes the installer path-resolution defect found in `v1.0.0` and separates
-the prebuilt runtime assets from the source/build asset.
+`v1.0.1` is a qualified patch release for the Creality K1C USB Ethernet
+runtime. It provides ready-to-install prebuilt runtime archives and a separate
+source archive for users who want to compile the three kernel modules
+themselves.
 
-The production module binaries are intended to remain byte-identical to
-`v1.0.0`; this release changes installer behavior, documentation, packaging,
-and release layout.
+Release assets:
 
-## 2. Supported hardware
+- `k1c-usb-ethernet-v1.0.1-runtime.tar.gz`
+- `k1c-usb-ethernet-v1.0.1-runtime.zip`
+- `k1c-usb-ethernet-v1.0.1-source.tar.gz`
+- `SHA256SUMS`
+
+The runtime TAR and ZIP contain ready-to-install compiled modules. The source
+TAR is for compilation and does not contain compiled `.ko` files.
+
+## 2. Changes since v1.0.0
+
+- Fixed installer path resolution so `install.sh` finds `package/` beside
+  itself even when invoked by absolute path, such as:
+
+  ```sh
+  sh /tmp/k1c-usb-ethernet-v1.0.1-runtime/install.sh --enable-boot
+  ```
+
+- Split release packaging into prebuilt runtime assets and a source-build
+  archive.
+- Documented the accepted source-build workflow and its external prerequisites.
+- Preserved the qualified runtime module hashes.
+
+## 3. Supported hardware
 
 - Tested printer generation: 2023-generation Creality K1C
 - Kernel: `4.4.94`
@@ -23,17 +41,18 @@ and release layout.
 The 2025 K1C revision has not been tested. Compatibility with the 2025 revision
 is unknown and is not claimed.
 
-## 3. Install the prebuilt driver
+## 4. Install the prebuilt driver
 
 Use one runtime asset:
 
 - `k1c-usb-ethernet-v1.0.1-runtime.tar.gz`
 - `k1c-usb-ethernet-v1.0.1-runtime.zip`
 
-The runtime archive already contains compiled `.ko` modules. Runtime users do
-not need an SDK, compiler, kernel source tree, or build tools.
+Runtime users do not need an SDK, compiler, kernel source tree, or build
+environment. Keep Wi-Fi enabled until USB Ethernet and fallback recovery are
+verified.
 
-Short form:
+Short TAR flow:
 
 ```sh
 sha256sum -c SHA256SUMS
@@ -41,34 +60,42 @@ scp k1c-usb-ethernet-v1.0.1-runtime.tar.gz root@PRINTER_IP:/tmp/
 ssh root@PRINTER_IP
 cd /tmp
 tar -xzf k1c-usb-ethernet-v1.0.1-runtime.tar.gz
-cd k1c-usb-ethernet-v1.0.1-runtime
-sh ./install.sh --enable-boot
-```
-
-The installer can also be invoked by absolute path:
-
-```sh
 sh /tmp/k1c-usb-ethernet-v1.0.1-runtime/install.sh --enable-boot
 ```
 
-## 4. Compile from source
+Installing with `--enable-boot` installs the boot hook but does not immediately
+start Ethernet-primary mode. Start explicitly or reboot.
+
+## 5. Compile from source
 
 Use:
 
 - `k1c-usb-ethernet-v1.0.1-source.tar.gz`
 
-The source archive contains the released module source files, build records,
-and helper scripts. It does not contain compiled `.ko` files, a vendor kernel
-tree, SDK, toolchain, sysroot, or firmware.
+The source archive contains the released module sources, build records, and
+helper scripts. It does not contain compiled `.ko` files, a vendor kernel tree,
+SDK, toolchain, sysroot, firmware, or private build output.
 
-The build path still depends on a separately acquired compatible prepared
-Creality/Ingenic X2000 Linux `4.4.94` kernel tree and MIPS toolchain. The source
-bundle is a coherent build workflow, not a guarantee of byte-for-byte
-reproduction without those exact external inputs.
+Source compilation requires separately obtained external prerequisites:
 
-## 5. Verify downloads
+- compatible prepared Creality/Ingenic X2000 Linux `4.4.94` kernel source;
+- matching generated kernel configuration and headers;
+- Ingenic-compatible MIPS toolchain.
 
-Verify all downloaded assets:
+For the accepted K1C configuration, `CONFIG_MODVERSIONS` is disabled. A
+top-level kernel `Module.symvers` was not required in the accepted workflow;
+Kbuild generated a module-local `Module.symvers` during `modpost`.
+`source/Module.symvers.known-good` is a 53-symbol module-export reference, not
+a full kernel symbol table.
+
+Output hashes may differ because kernel modules can embed build paths. Runtime
+ABI compatibility is checked through source identity, target configuration,
+architecture, vermagic, dependencies, and verification output, not universal
+byte-for-byte reproducibility.
+
+## 6. Verify downloads
+
+Download `SHA256SUMS` and the assets you plan to use, then run:
 
 ```sh
 sha256sum -c SHA256SUMS
@@ -80,10 +107,12 @@ sha256sum -c SHA256SUMS
 - `k1c-usb-ethernet-v1.0.1-runtime.zip`
 - `k1c-usb-ethernet-v1.0.1-source.tar.gz`
 
-## 6. Upgrade from v1.0.0
+Only use assets that report `OK`.
+
+## 7. Upgrade from v1.0.0
 
 The v1.0.1 installer refuses an existing package-owned installation. Keep Wi-Fi
-SSH available, then:
+SSH available, then stop and uninstall v1.0.0:
 
 ```sh
 /usr/data/k1c-usb-ethernet/vendor-native-known-good/stop-primary-ethernet.sh
@@ -92,10 +121,7 @@ SSH available, then:
 
 Install v1.0.1 after v1.0.0 is removed.
 
-## 7. Start and status
-
-Installing with `--enable-boot` enables startup after reboot. It does not start
-Ethernet-primary mode immediately.
+## 8. Start and status
 
 Start immediately:
 
@@ -111,11 +137,11 @@ Check status:
 
 Expected route behavior while USB is healthy:
 
-- USB Ethernet metric `50`
-- Wi-Fi fallback metric `300`
+- USB Ethernet default route metric `50`
+- Wi-Fi fallback default route metric `300`
 - gateway lookup from the USB address selects `usb0`
 
-## 8. Uninstall and recovery
+## 9. Uninstall and recovery
 
 Disable boot integration:
 
@@ -132,28 +158,31 @@ Uninstall:
 Keep Wi-Fi enabled during installation and testing so you can recover over Wi-Fi
 SSH if USB Ethernet fails.
 
-## 9. Known limitations
+## 10. Known limitations
 
 - Unofficial community release; not affiliated with or supported by Creality.
-- Physical support claim remains limited to the documented 2023-generation K1C.
+- Physical support claim is limited to the documented 2023-generation K1C.
 - 2025 K1C compatibility is unknown and not claimed.
-- The source build path requires external vendor/toolchain inputs not
+- The source-build workflow requires external vendor/toolchain inputs not
   redistributed here.
+- Self-built modules must be validated before use on a printer.
 
-## 10. Source and license compliance
+## 11. Source and license compliance
 
-The runtime archive includes compiled Linux kernel modules. The source archive
+The runtime archives include compiled Linux kernel modules. The source archive
 includes corresponding module source files and build records.
 
 `COPYING` contains the Linux kernel GPLv2 text. `LICENSE.md` explains the
-mixed-license structure and does not claim that kernel-derived source or modules
-are MIT-licensed.
+mixed-license structure and does not claim that kernel-derived source or
+modules are MIT-licensed.
 
-## 11. Qualification state
+## 12. Qualification summary
 
-Current state:
+Runtime physical qualification passed across installation, reboot persistence,
+Ethernet-cable loss and recovery, physical USB adapter removal and recreation,
+uninstall, and final reinstall.
 
-`GO_candidate_pending_v1.0.1_physical_validation`
-
-Do not publish this release as fully qualified until v1.0.1 physical printer
-validation is complete.
+Source-build acceptance passed from a fresh source archive using a prepared K1C
+kernel tree and Ingenic-compatible MIPS toolchain. All three built modules were
+ELF32 LSB MIPS/MIPS32 rel2 and used vermagic
+`4.4.94 SMP preempt mod_unload MIPS32_R2 32BIT`.

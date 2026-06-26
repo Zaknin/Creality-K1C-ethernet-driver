@@ -166,7 +166,7 @@ vermagic, dependency order, and successful module loading on the target printer.
 
 ## Install Self-Built Modules
 
-This release candidate does not include a separate self-built-module installer.
-To test self-built modules, replace the three files in a copy of the runtime
-package, regenerate `package/module-hashes.sha256` and `package/SHA256SUMS`, and
-run the full static and physical validation matrix before relying on the result.
+This release does not include a separate self-built-module installer. To test
+self-built modules, replace the three files in a copy of the runtime package,
+regenerate `package/module-hashes.sha256` and `package/SHA256SUMS`, and run the
+full static and physical validation matrix before relying on the result.
