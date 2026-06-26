@@ -1,0 +1,138 @@
+{
+    "schema":  "k1c-runtime-byte-identity-v1",
+    "compared_against":  "ffa20861042817d09e0b19dd0ca46496897aac0c",
+    "current_head":  "87189f868206b16edbecaedb487cfa935fe6e81c",
+    "generated_utc":  "2026-06-26T11:58:19Z",
+    "verdict":  "PASS",
+    "comparison_basis":  "git tree blob identity for runtime executable files and production modules",
+    "files":  [
+                  {
+                      "path":  "install.sh",
+                      "base_commit":  "ffa20861042817d09e0b19dd0ca46496897aac0c",
+                      "head_commit":  "87189f868206b16edbecaedb487cfa935fe6e81c",
+                      "base_git_blob":  "ba271c696d229aea23e9bf47e47f028771d579bc",
+                      "head_git_blob":  "ba271c696d229aea23e9bf47e47f028771d579bc",
+                      "byte_identical":  true
+                  },
+                  {
+                      "path":  "package/S46usb_ethernet_primary",
+                      "base_commit":  "ffa20861042817d09e0b19dd0ca46496897aac0c",
+                      "head_commit":  "87189f868206b16edbecaedb487cfa935fe6e81c",
+                      "base_git_blob":  "55441d6f8bb47a323d5afc037104e2b4995ca067",
+                      "head_git_blob":  "55441d6f8bb47a323d5afc037104e2b4995ca067",
+                      "byte_identical":  true
+                  },
+                  {
+                      "path":  "package/disable-primary-ethernet-boot.sh",
+                      "base_commit":  "ffa20861042817d09e0b19dd0ca46496897aac0c",
+                      "head_commit":  "87189f868206b16edbecaedb487cfa935fe6e81c",
+                      "base_git_blob":  "e8bed5d83f061031f1360aea822053c0e32e55b1",
+                      "head_git_blob":  "e8bed5d83f061031f1360aea822053c0e32e55b1",
+                      "byte_identical":  true
+                  },
+                  {
+                      "path":  "package/ethernet-failover-status.sh",
+                      "base_commit":  "ffa20861042817d09e0b19dd0ca46496897aac0c",
+                      "head_commit":  "87189f868206b16edbecaedb487cfa935fe6e81c",
+                      "base_git_blob":  "c54283055905572141aa351df0119bbcd4f41be8",
+                      "head_git_blob":  "c54283055905572141aa351df0119bbcd4f41be8",
+                      "byte_identical":  true
+                  },
+                  {
+                      "path":  "package/primary-routing-lib.sh",
+                      "base_commit":  "ffa20861042817d09e0b19dd0ca46496897aac0c",
+                      "head_commit":  "87189f868206b16edbecaedb487cfa935fe6e81c",
+                      "base_git_blob":  "ad001e5e1054045b5ebf7b4f7e29f95a37a67a78",
+                      "head_git_blob":  "ad001e5e1054045b5ebf7b4f7e29f95a37a67a78",
+                      "byte_identical":  true
+                  },
+                  {
+                      "path":  "package/start-primary-ethernet.sh",
+                      "base_commit":  "ffa20861042817d09e0b19dd0ca46496897aac0c",
+                      "head_commit":  "87189f868206b16edbecaedb487cfa935fe6e81c",
+                      "base_git_blob":  "e9f907f6d3882a8353ef56149c20ede0a911297b",
+                      "head_git_blob":  "e9f907f6d3882a8353ef56149c20ede0a911297b",
+                      "byte_identical":  true
+                  },
+                  {
+                      "path":  "package/start-usb-ethernet.sh",
+                      "base_commit":  "ffa20861042817d09e0b19dd0ca46496897aac0c",
+                      "head_commit":  "87189f868206b16edbecaedb487cfa935fe6e81c",
+                      "base_git_blob":  "082ce7f0f53611204bece7ef2208808dcd763fc2",
+                      "head_git_blob":  "082ce7f0f53611204bece7ef2208808dcd763fc2",
+                      "byte_identical":  true
+                  },
+                  {
+                      "path":  "package/status-usb-ethernet.sh",
+                      "base_commit":  "ffa20861042817d09e0b19dd0ca46496897aac0c",
+                      "head_commit":  "87189f868206b16edbecaedb487cfa935fe6e81c",
+                      "base_git_blob":  "3f9e31b1e9f9df1acaae4d3b431f3a0bdc28585f",
+                      "head_git_blob":  "3f9e31b1e9f9df1acaae4d3b431f3a0bdc28585f",
+                      "byte_identical":  true
+                  },
+                  {
+                      "path":  "package/stop-primary-ethernet.sh",
+                      "base_commit":  "ffa20861042817d09e0b19dd0ca46496897aac0c",
+                      "head_commit":  "87189f868206b16edbecaedb487cfa935fe6e81c",
+                      "base_git_blob":  "a36a41c20bd6dc0b31d2ad38ef21c46c6c018272",
+                      "head_git_blob":  "a36a41c20bd6dc0b31d2ad38ef21c46c6c018272",
+                      "byte_identical":  true
+                  },
+                  {
+                      "path":  "package/stop-usb-ethernet.sh",
+                      "base_commit":  "ffa20861042817d09e0b19dd0ca46496897aac0c",
+                      "head_commit":  "87189f868206b16edbecaedb487cfa935fe6e81c",
+                      "base_git_blob":  "cfea5639b135ed16af1eca8f0ca7539c443d3773",
+                      "head_git_blob":  "cfea5639b135ed16af1eca8f0ca7539c443d3773",
+                      "byte_identical":  true
+                  },
+                  {
+                      "path":  "package/uninstall-usb-ethernet.sh",
+                      "base_commit":  "ffa20861042817d09e0b19dd0ca46496897aac0c",
+                      "head_commit":  "87189f868206b16edbecaedb487cfa935fe6e81c",
+                      "base_git_blob":  "5d2aa9b441ad2893e9fa77e2a892835feedf48d8",
+                      "head_git_blob":  "5d2aa9b441ad2893e9fa77e2a892835feedf48d8",
+                      "byte_identical":  true
+                  },
+                  {
+                      "path":  "package/usb0-route-monitor.sh",
+                      "base_commit":  "ffa20861042817d09e0b19dd0ca46496897aac0c",
+                      "head_commit":  "87189f868206b16edbecaedb487cfa935fe6e81c",
+                      "base_git_blob":  "1b75750605d6ffc3939fd41e4ae4879bc8cd1438",
+                      "head_git_blob":  "1b75750605d6ffc3939fd41e4ae4879bc8cd1438",
+                      "byte_identical":  true
+                  },
+                  {
+                      "path":  "package/usb0-udhcpc-script.sh",
+                      "base_commit":  "ffa20861042817d09e0b19dd0ca46496897aac0c",
+                      "head_commit":  "87189f868206b16edbecaedb487cfa935fe6e81c",
+                      "base_git_blob":  "316c71017628cb90517bb20a95fac61344da59bc",
+                      "head_git_blob":  "316c71017628cb90517bb20a95fac61344da59bc",
+                      "byte_identical":  true
+                  },
+                  {
+                      "path":  "package/modules/mii.ko",
+                      "base_commit":  "ffa20861042817d09e0b19dd0ca46496897aac0c",
+                      "head_commit":  "87189f868206b16edbecaedb487cfa935fe6e81c",
+                      "base_git_blob":  "4427d144e3d8ba6807ff13164accfd1ed242cdc7",
+                      "head_git_blob":  "4427d144e3d8ba6807ff13164accfd1ed242cdc7",
+                      "byte_identical":  true
+                  },
+                  {
+                      "path":  "package/modules/usbnet.ko",
+                      "base_commit":  "ffa20861042817d09e0b19dd0ca46496897aac0c",
+                      "head_commit":  "87189f868206b16edbecaedb487cfa935fe6e81c",
+                      "base_git_blob":  "d13639bcb790568689576b219190ec283e0134ba",
+                      "head_git_blob":  "d13639bcb790568689576b219190ec283e0134ba",
+                      "byte_identical":  true
+                  },
+                  {
+                      "path":  "package/modules/cdc_ncm.ko",
+                      "base_commit":  "ffa20861042817d09e0b19dd0ca46496897aac0c",
+                      "head_commit":  "87189f868206b16edbecaedb487cfa935fe6e81c",
+                      "base_git_blob":  "d522c4e2d1ee62e1da6b2c41f4d6255283196437",
+                      "head_git_blob":  "d522c4e2d1ee62e1da6b2c41f4d6255283196437",
+                      "byte_identical":  true
+                  }
+              ]
+}

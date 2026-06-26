@@ -2,7 +2,7 @@
 
 ## v1.0.1
 
-Status: local release candidate pending physical validation.
+Status: qualified for the documented 2023-generation K1C target.
 
 Changes:
 
@@ -12,8 +12,9 @@ Changes:
 - Removes maintainer-only qualification and build records from the runtime
   payload.
 - Keeps the supported hardware scope unchanged.
-- Intends to keep the three production module binaries byte-identical to
-  v1.0.0.
+- Keeps the three production module hashes unchanged from the physically tested
+  v1.0.1 runtime candidate.
+- Records completed runtime physical qualification and source-build acceptance.
 
 Upgrade from v1.0.0:
 

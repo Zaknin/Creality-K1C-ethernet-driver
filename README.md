@@ -41,9 +41,11 @@ explicitly after installation, or reboot after enabling boot integration.
 
 ## Release State
 
-`v1.0.1` is a local release candidate pending physical validation. It fixes the
-installer path-resolution defect found in `v1.0.0` and separates prebuilt
-runtime packaging from source/build packaging. The production module binaries
-are intended to remain byte-identical to `v1.0.0`.
+`v1.0.1` is qualified for the documented 2023-generation K1C target. It fixes
+the installer path-resolution defect found in `v1.0.0`, separates prebuilt
+runtime packaging from source/build packaging, and has completed both runtime
+physical qualification and source-build acceptance. The production module
+binaries remain byte-identical to the physically tested v1.0.1 runtime
+candidate.
 
 See [docs/RELEASE-HISTORY.md](docs/RELEASE-HISTORY.md) for upgrade guidance.
