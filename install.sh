@@ -1,10 +1,12 @@
 #!/bin/sh
 set -eu
 
-VERSION=1.0.0
+VERSION=1.0.1
 EXPECTED_KERNEL=4.4.94
 DEFAULT_INSTALL_DIR=/usr/data/k1c-usb-ethernet/vendor-native-known-good
 BOOT_HOOK="${BOOT_HOOK:-/etc/init.d/S46usb_ethernet_primary}"
+SCRIPT_DIR="$(CDPATH= cd "$(dirname "$0")" && pwd)"
+PACKAGE_DIR="$SCRIPT_DIR/package"
 
 usage() {
   cat <<EOF
@@ -46,13 +48,14 @@ fail() {
 }
 
 [ "$(uname -r)" = "$EXPECTED_KERNEL" ] || fail "unsupported kernel $(uname -r), expected $EXPECTED_KERNEL"
-[ -d package ] || fail "run this installer from the release repository root"
-[ -f package/module-hashes.sha256 ] || fail "missing package/module-hashes.sha256"
+[ -d "$PACKAGE_DIR" ] || fail "missing package directory beside install.sh: $PACKAGE_DIR"
+[ -f "$PACKAGE_DIR/module-hashes.sha256" ] || fail "missing package/module-hashes.sha256"
 
-( cd package && sha256sum -c module-hashes.sha256 ) || fail "module hash verification failed"
+( cd "$PACKAGE_DIR" && sha256sum -c module-hashes.sha256 ) || fail "module hash verification failed"
 
+[ ! -f "$dest/.package-owned" ] || fail "existing package-owned installation at $dest; stop Ethernet-primary mode, uninstall the old package, then install v$VERSION"
 mkdir -p "$dest"
-cp -R package/. "$dest/"
+cp -R "$PACKAGE_DIR"/. "$dest/"
 echo "k1c-usb-ethernet v$VERSION package-owned install tree" > "$dest/.package-owned"
 ( cd "$dest" && sha256sum -c module-hashes.sha256 ) || fail "installed module hash verification failed"
 
