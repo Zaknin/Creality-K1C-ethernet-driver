@@ -4,8 +4,8 @@
 
 `GO -- qualification complete; publication remains a separate maintainer-controlled action.`
 
-The unpublished v1.0.0 runtime was qualified on the target Creality K1C on
-2026-06-25.
+The unpublished v1.0.0 runtime was qualified on the target 2023-generation
+Creality K1C on 2026-06-25.
 
 Qualified candidate:
 
@@ -31,8 +31,8 @@ removed while the boot hook and route-monitor process remained. The defect was
 fixed in commit `25ec035`, covered by a TERM-to-SIGKILL regression, rebuilt into
 candidate commit `0e188c2`, and retested successfully on the printer.
 
-The final public archives will be rebuilt after this qualification record is
-updated. That final rebuild changes documentation and archive hashes only.
+The final public archives are rebuilt after qualification-record updates.
+That final rebuild changes documentation and archive hashes only.
 The complete `package/` runtime payload must remain byte-identical to the
 physically qualified candidate.
 
@@ -41,7 +41,7 @@ GitHub release.
 
 ## Supported Target
 
-- Printer: Creality K1C only
+- Tested printer generation: 2023-generation Creality K1C
 - Board/SoC family: Ingenic X2000 K1C platform
 - Kernel: `4.4.94`
 - Observed kernel banner class: `Linux K1C ... 4.4.94 ... mips GNU/Linux`
@@ -55,6 +55,8 @@ GitHub release.
 
 This release does not claim support for other printers, firmware versions,
 kernel ABIs, or USB Ethernet chipsets.
+
+Tested only on a 2023-generation Creality K1C running kernel 4.4.94 with the documented module ABI. The 2025 K1C revision has not been tested; compatibility is unknown and is not claimed.
 
 ## Adapter Tested
 
@@ -337,8 +339,8 @@ while verifying the selected source and output interface.
 
 ## Acceptance Rationale
 
-The release is accepted as `GO` for the explicitly documented Creality K1C
-kernel ABI and tested ASIX adapter.
+The release is accepted as `GO` for the explicitly documented 2023-generation
+Creality K1C kernel ABI and tested ASIX adapter.
 
 The frozen production modules remain unchanged from the previously qualified
 module set. The corrected routing runtime passed automated regression,

@@ -12,6 +12,10 @@ module sources used for the shipped binaries are included in `source/`:
 The final kernel configuration used for compatibility records is included as
 `package/final.config`.
 
+Compatibility records apply only to the tested hardware and ABI:
+
+Tested only on a 2023-generation Creality K1C running kernel 4.4.94 with the documented module ABI. The 2025 K1C revision has not been tested; compatibility is unknown and is not claimed.
+
 The toolchain record is included as `package/toolchain.txt`.
 
 The GPL license text from the Linux kernel tree is included as `COPYING`.

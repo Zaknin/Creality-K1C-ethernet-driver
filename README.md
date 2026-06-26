@@ -1,21 +1,24 @@
 # K1C USB Ethernet v1.0.0
 
-Validated USB Ethernet support for the explicitly supported Creality K1C
-firmware/kernel ABI using the ASIX `0b95:1790` adapter in CDC-NCM mode.
+Validated USB Ethernet support for the explicitly supported 2023-generation
+Creality K1C firmware/kernel ABI using the ASIX `0b95:1790` adapter in CDC-NCM
+mode.
 
 Current release verdict:
 
-`NO-GO pending physical-printer validation of the corrected v1.0.0 routing package.`
+`GO -- automated and physical qualification complete.`
 
 ## Compatibility
 
 This release is intentionally strict:
 
-- Printer: Creality K1C
+- Tested printer generation: 2023-generation Creality K1C
 - SoC/board family: Ingenic X2000 K1C platform
 - Kernel: `4.4.94`
 - Kernel ABI/vermagic: `4.4.94 SMP preempt mod_unload MIPS32_R2 32BIT`
 - Adapter tested: ASIX `0b95:1790`
+
+Tested only on a 2023-generation Creality K1C running kernel 4.4.94 with the documented module ABI. The 2025 K1C revision has not been tested; compatibility is unknown and is not claimed.
 
 Do not use this package on unrelated printers, firmware builds, kernels, or
 USB Ethernet adapters.
