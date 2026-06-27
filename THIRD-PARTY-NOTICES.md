@@ -8,7 +8,7 @@ Original repository scripts, tools, tests, and documentation are released under 
 
 ## Linux kernel and modules
 
-Linux kernel source and kernel-derived modules are governed by their applicable Linux kernel and source-file licenses, not by this repository's MIT license. Locally built `mii.ko`, `usbnet.ko`, and `cdc_ncm.ko` files are not redistributed by this project.
+Linux kernel source and kernel-derived modules are governed by their applicable Linux kernel and source-file licenses, not by this repository's MIT license.
 
 ## Ingenic source package
 
