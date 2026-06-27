@@ -1,6 +1,12 @@
 # Creality K1C USB Ethernet Driver
 
-Unofficial USB Ethernet support for the Creality K1C printer.
+Add wired Ethernet/LAN connectivity to a **2023-generation Creality K1C**
+using a compatible USB-to-Ethernet adapter.
+
+The **K1C USB Ethernet v1.0.1** release includes ready-to-install Linux
+kernel modules and an installer. Normal installation does not require a
+compiler, vendor SDK, or kernel source tree. Source code and build tools
+are also available for users who want to compile the driver themselves.
 
 ## Latest Release
 
