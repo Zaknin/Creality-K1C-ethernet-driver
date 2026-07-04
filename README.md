@@ -3,7 +3,7 @@
 Add wired Ethernet/LAN connectivity to a **2023-generation Creality K1C**
 using a compatible USB-to-Ethernet adapter.
 
-The **K1C USB Ethernet v1.0.1** release includes ready-to-install Linux
+The **K1C USB Ethernet v1.0.2** release includes ready-to-install Linux
 kernel modules and an installer. Normal installation does not require a
 compiler, vendor SDK, or kernel source tree. Source code and build tools
 are also available for users who want to compile the driver themselves.
@@ -12,16 +12,19 @@ are also available for users who want to compile the driver themselves.
 
 The latest release is:
 
-**[K1C USB Ethernet v1.0.1](https://github.com/Zaknin/Creality-K1C-ethernet-driver/releases/tag/v1.0.1)**
+**[K1C USB Ethernet v1.0.2](https://github.com/Zaknin/Creality-K1C-ethernet-driver/releases/tag/v1.0.2)**
+
+This patch release fixes boot-time DHCP acquisition when `usb0` appears
+without an IPv4 address by waiting for carrier before starting bounded DHCP.
 
 The release provides two separate workflows.
 
 ### Install the prebuilt driver
 
-Download one of these ready-to-install runtime packages from the v1.0.1 release:
+Download one of these ready-to-install runtime packages from the v1.0.2 release:
 
-- `k1c-usb-ethernet-v1.0.1-runtime.tar.gz`
-- `k1c-usb-ethernet-v1.0.1-runtime.zip`
+- `k1c-usb-ethernet-v1.0.2-runtime.tar.gz`
+- `k1c-usb-ethernet-v1.0.2-runtime.zip`
 
 These packages already contain the compiled kernel modules:
 
@@ -37,7 +40,7 @@ Follow the installation instructions included in the runtime archive.
 
 Download:
 
-- `k1c-usb-ethernet-v1.0.1-source.tar.gz`
+- `k1c-usb-ethernet-v1.0.2-source.tar.gz`
 
 The source package contains the driver source, build scripts, build records, and compilation documentation.
 
@@ -65,18 +68,18 @@ The default `main` branch contains the separately published **v0.1.1 build tools
 
 These tools are intended for users who want to prepare a compatible kernel source tree, compile the modules themselves, package a local build, and deploy it to the printer.
 
-The current ready-to-install runtime is distributed through the immutable `v1.0.1` release and its annotated Git tag.
+The current ready-to-install runtime is distributed through the immutable `v1.0.2` release and its annotated Git tag.
 
 The build-tools and runtime histories are intentionally separate and have not been merged.
 
 ## Release Assets
 
-The v1.0.1 release contains exactly four custom assets:
+The v1.0.2 release contains exactly four custom assets:
 
-- `k1c-usb-ethernet-v1.0.1-runtime.tar.gz`
-- `k1c-usb-ethernet-v1.0.1-runtime.zip`
-- `k1c-usb-ethernet-v1.0.1-source.tar.gz`
-- `SHA256SUMS`
+- `k1c-usb-ethernet-v1.0.2-runtime.tar.gz`
+- `k1c-usb-ethernet-v1.0.2-runtime.zip`
+- `k1c-usb-ethernet-v1.0.2-source.tar.gz`
+- [`SHA256SUMS`](https://github.com/Zaknin/Creality-K1C-ethernet-driver/releases/download/v1.0.2/SHA256SUMS)
 
 Verify downloaded files using `SHA256SUMS` before installation or compilation.
 
