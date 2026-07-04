@@ -28,16 +28,16 @@ Other kernels are refused because the modules are built for one ABI only.
 
 ## Installer Cannot Locate `package/`
 
-Use the v1.0.1 runtime archive. The installer expects `package/` beside
+Use the v1.0.2 runtime archive. The installer expects `package/` beside
 `install.sh`. Both of these forms are supported:
 
 ```sh
-cd /tmp/k1c-usb-ethernet-v1.0.1-runtime
+cd /tmp/k1c-usb-ethernet-v1.0.2-runtime
 sh ./install.sh --enable-boot
 ```
 
 ```sh
-sh /tmp/k1c-usb-ethernet-v1.0.1-runtime/install.sh --enable-boot
+sh /tmp/k1c-usb-ethernet-v1.0.2-runtime/install.sh --enable-boot
 ```
 
 If this still fails, the archive was not fully extracted.
@@ -53,14 +53,14 @@ sha256sum -c SHA256SUMS
 Verify extracted runtime files:
 
 ```sh
-cd k1c-usb-ethernet-v1.0.1-runtime/package
+cd k1c-usb-ethernet-v1.0.2-runtime/package
 sha256sum -c module-hashes.sha256
 sha256sum -c SHA256SUMS
 ```
 
 ## Existing Installation
 
-The v1.0.1 installer refuses an existing package-owned install tree. Keep Wi-Fi
+The v1.0.2 installer refuses an existing package-owned install tree. Keep Wi-Fi
 connected, then run:
 
 ```sh
@@ -68,7 +68,7 @@ connected, then run:
 /usr/data/k1c-usb-ethernet/vendor-native-known-good/uninstall-usb-ethernet.sh --yes
 ```
 
-Then install v1.0.1.
+Then install v1.0.2.
 
 ## Adapter Not Detected
 

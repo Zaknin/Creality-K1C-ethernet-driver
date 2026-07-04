@@ -1,35 +1,32 @@
-# GitHub Release Notes: v1.0.1
+# GitHub Release Notes: v1.0.2
 
 ## 1. What this release is
 
-`v1.0.1` is a qualified patch release for the Creality K1C USB Ethernet
-runtime. It provides ready-to-install prebuilt runtime archives and a separate
-source archive for users who want to compile the three kernel modules
-themselves.
+`v1.0.2` is a boot DHCP acquisition patch for the Creality K1C USB Ethernet
+runtime. It keeps the v1.0.1 installation procedure and module hashes unchanged
+while making reboot acquisition match the confirmed live printer recovery path.
 
 Release assets:
 
-- `k1c-usb-ethernet-v1.0.1-runtime.tar.gz`
-- `k1c-usb-ethernet-v1.0.1-runtime.zip`
-- `k1c-usb-ethernet-v1.0.1-source.tar.gz`
+- `k1c-usb-ethernet-v1.0.2-runtime.tar.gz`
+- `k1c-usb-ethernet-v1.0.2-runtime.zip`
+- `k1c-usb-ethernet-v1.0.2-source.tar.gz`
 - `SHA256SUMS`
 
 The runtime TAR and ZIP contain ready-to-install compiled modules. The source
 TAR is for compilation and does not contain compiled `.ko` files.
 
-## 2. Changes since v1.0.0
+## 2. Changes since v1.0.1
 
-- Fixed installer path resolution so `install.sh` finds `package/` beside
-  itself even when invoked by absolute path, such as:
-
-  ```sh
-  sh /tmp/k1c-usb-ethernet-v1.0.1-runtime/install.sh --enable-boot
-  ```
-
-- Split release packaging into prebuilt runtime assets and a source-build
-  archive.
-- Documented the accepted source-build workflow and its external prerequisites.
-- Preserved the qualified runtime module hashes.
+- Boot now brings up `usb0`, waits for carrier, and runs a bounded foreground
+  DHCP acquisition with `udhcpc -i usb0 -n -q -t 5` semantics.
+- Fixes the confirmed reboot failure where `usb0` was present and
+  `UP/LOWER_UP` but had no IPv4 address until manual DHCP was run.
+- Preserves USB Ethernet as primary when DHCP succeeds: default route metric
+  `50`, Wi-Fi fallback default route metric `300`.
+- Avoids destructive lease-failure cleanup after a failed boot DHCP attempt, so
+  a failed retry does not remove useful existing USB routes.
+- Preserves the qualified runtime module hashes from v1.0.1.
 
 ## 3. Supported hardware
 
@@ -45,8 +42,8 @@ is unknown and is not claimed.
 
 Use one runtime asset:
 
-- `k1c-usb-ethernet-v1.0.1-runtime.tar.gz`
-- `k1c-usb-ethernet-v1.0.1-runtime.zip`
+- `k1c-usb-ethernet-v1.0.2-runtime.tar.gz`
+- `k1c-usb-ethernet-v1.0.2-runtime.zip`
 
 Runtime users do not need an SDK, compiler, kernel source tree, or build
 environment. Keep Wi-Fi enabled until USB Ethernet and fallback recovery are
@@ -56,11 +53,11 @@ Short TAR flow:
 
 ```sh
 sha256sum -c SHA256SUMS
-scp k1c-usb-ethernet-v1.0.1-runtime.tar.gz root@PRINTER_IP:/tmp/
+scp k1c-usb-ethernet-v1.0.2-runtime.tar.gz root@PRINTER_IP:/tmp/
 ssh root@PRINTER_IP
 cd /tmp
-tar -xzf k1c-usb-ethernet-v1.0.1-runtime.tar.gz
-sh /tmp/k1c-usb-ethernet-v1.0.1-runtime/install.sh --enable-boot
+tar -xzf k1c-usb-ethernet-v1.0.2-runtime.tar.gz
+sh /tmp/k1c-usb-ethernet-v1.0.2-runtime/install.sh --enable-boot
 ```
 
 Installing with `--enable-boot` installs the boot hook but does not immediately
@@ -70,7 +67,7 @@ start Ethernet-primary mode. Start explicitly or reboot.
 
 Use:
 
-- `k1c-usb-ethernet-v1.0.1-source.tar.gz`
+- `k1c-usb-ethernet-v1.0.2-source.tar.gz`
 
 The source archive contains the released module sources, build records, and
 helper scripts. It does not contain compiled `.ko` files, a vendor kernel tree,
@@ -103,23 +100,23 @@ sha256sum -c SHA256SUMS
 
 `SHA256SUMS` covers exactly:
 
-- `k1c-usb-ethernet-v1.0.1-runtime.tar.gz`
-- `k1c-usb-ethernet-v1.0.1-runtime.zip`
-- `k1c-usb-ethernet-v1.0.1-source.tar.gz`
+- `k1c-usb-ethernet-v1.0.2-runtime.tar.gz`
+- `k1c-usb-ethernet-v1.0.2-runtime.zip`
+- `k1c-usb-ethernet-v1.0.2-source.tar.gz`
 
 Only use assets that report `OK`.
 
-## 7. Upgrade from v1.0.0
+## 7. Upgrade from v1.0.1
 
-The v1.0.1 installer refuses an existing package-owned installation. Keep Wi-Fi
-SSH available, then stop and uninstall v1.0.0:
+The v1.0.2 installer refuses an existing package-owned installation. Keep Wi-Fi
+SSH available, then stop and uninstall v1.0.1:
 
 ```sh
 /usr/data/k1c-usb-ethernet/vendor-native-known-good/stop-primary-ethernet.sh
 /usr/data/k1c-usb-ethernet/vendor-native-known-good/uninstall-usb-ethernet.sh --yes
 ```
 
-Install v1.0.1 after v1.0.0 is removed.
+Install v1.0.2 after v1.0.1 is removed.
 
 ## 8. Start and status
 
@@ -178,9 +175,9 @@ modules are MIT-licensed.
 
 ## 12. Qualification summary
 
-Runtime physical qualification passed across installation, reboot persistence,
-Ethernet-cable loss and recovery, physical USB adapter removal and recreation,
-uninstall, and final reinstall.
+Regression tests cover boot with `usb0` present but no IPv4 address, delayed
+carrier before DHCP, DHCP success after carrier becomes active, and preservation
+of existing USB routes after a failed boot DHCP attempt.
 
 Source-build acceptance passed from a fresh source archive using a prepared K1C
 kernel tree and Ingenic-compatible MIPS toolchain. All three built modules were

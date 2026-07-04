@@ -10,6 +10,7 @@ PID_FILE="$STATE_DIR/udhcpc-usb0.pid"
 MONITOR_PID_FILE="$STATE_DIR/usb0-monitor.pid"
 UDHCPC_PID_FILE="$PID_FILE"
 LOG_CONTEXT="start-primary"
+BOOT_DHCP_TRIES="${BOOT_DHCP_TRIES:-5}"
 
 . "$PACKAGE_DIR/primary-routing-lib.sh"
 
@@ -29,14 +30,16 @@ start_udhcpc() {
     log "udhcpc lease already valid for current usb0 interface"
     return 0
   fi
-  if dhcp_replacement_waiting; then
-    log "udhcpc replacement already running pid=$(cat "$PID_FILE")"
-    return 0
-  fi
   if dhcp_process_valid; then
     log "udhcpc process alive but lease invalid for current usb0 interface; restarting"
+    terminate_runtime_udhcpc || fail "stale udhcpc process did not exit"
   fi
-  restart_runtime_udhcpc_for_generation || fail "stale udhcpc process did not exit"
+  clear_usb_lease_state
+  clear_dhcp_replacement_pending
+  log "starting bounded boot DHCP acquisition command=udhcpc -i $USB_IF -n -q -t $BOOT_DHCP_TRIES"
+  DHCP_LOG_DIR="$STATE_DIR" STATE_DIR="$STATE_DIR" LOG_FILE="$LOG_FILE" PACKAGE_DIR="$PACKAGE_DIR" \
+    udhcpc -i "$USB_IF" -n -q -t "$BOOT_DHCP_TRIES" -s "$UDHCPC_SCRIPT" >> "$LOG_FILE" 2>&1 || return 1
+  dhcp_lease_valid_for_current_usb_interface
 }
 
 start_monitor() {
@@ -66,5 +69,5 @@ while [ "$i" -le 35 ]; do
   i=$((i + 1))
 done
 
-"$UDHCPC_SCRIPT" leasefail
+log "no usb0 DHCP lease acquired; preserving existing routes and fallback state"
 fail "no usb0 DHCP lease acquired"

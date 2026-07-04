@@ -1,5 +1,33 @@
 # Release History
 
+## v1.0.2
+
+Status: boot DHCP acquisition patch for the documented 2023-generation K1C
+target.
+
+Changes:
+
+- Uses a bounded foreground boot DHCP acquisition after `usb0` carrier is
+  present, matching the confirmed live recovery behavior.
+- Handles the case where `usb0` exists and is `UP/LOWER_UP` but has no IPv4
+  address after reboot.
+- Waits for delayed carrier before attempting DHCP.
+- Keeps the package DHCP hook in the boot path so successful leases still
+  install USB Ethernet as primary with metric `50` and Wi-Fi fallback with
+  metric `300`.
+- Does not run destructive lease-failure cleanup after a boot DHCP miss, so
+  existing useful USB routes are not removed by the failed acquisition attempt.
+- Keeps the installation procedure and runtime module hashes unchanged.
+
+Upgrade from v1.0.1:
+
+1. Keep Wi-Fi SSH available.
+2. Stop Ethernet-primary mode.
+3. Uninstall v1.0.1.
+4. Install v1.0.2.
+5. Start Ethernet-primary mode explicitly or reboot if boot integration was
+   enabled.
+
 ## v1.0.1
 
 Status: qualified for the documented 2023-generation K1C target.
