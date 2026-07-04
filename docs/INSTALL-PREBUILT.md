@@ -1,7 +1,7 @@
 # Install the Prebuilt Driver
 
-Use this guide with `k1c-usb-ethernet-v1.0.1-runtime.tar.gz` or
-`k1c-usb-ethernet-v1.0.1-runtime.zip`.
+Use this guide with `k1c-usb-ethernet-v1.0.2-runtime.tar.gz` or
+`k1c-usb-ethernet-v1.0.2-runtime.zip`.
 
 The runtime archive already contains compiled `.ko` modules. You do not need an
 SDK, compiler, kernel source tree, or build tools.
@@ -25,7 +25,7 @@ Only continue if the selected runtime archive reports `OK`.
 Replace `PRINTER_IP` with the current Wi-Fi address:
 
 ```sh
-scp k1c-usb-ethernet-v1.0.1-runtime.tar.gz root@PRINTER_IP:/tmp/
+scp k1c-usb-ethernet-v1.0.2-runtime.tar.gz root@PRINTER_IP:/tmp/
 ```
 
 ## 3. Extract on the Printer
@@ -33,7 +33,7 @@ scp k1c-usb-ethernet-v1.0.1-runtime.tar.gz root@PRINTER_IP:/tmp/
 ```sh
 ssh root@PRINTER_IP
 cd /tmp
-tar -xzf k1c-usb-ethernet-v1.0.1-runtime.tar.gz
+tar -xzf k1c-usb-ethernet-v1.0.2-runtime.tar.gz
 ```
 
 For ZIP users, extract the ZIP with the available unzip tool on your host or on
@@ -44,7 +44,7 @@ the printer, then copy the extracted directory to `/tmp`.
 From the extracted directory:
 
 ```sh
-cd /tmp/k1c-usb-ethernet-v1.0.1-runtime
+cd /tmp/k1c-usb-ethernet-v1.0.2-runtime
 sh ./install.sh --enable-boot
 ```
 
@@ -52,15 +52,15 @@ The installer can also be invoked by absolute path:
 
 ```sh
 cd /tmp
-sh /tmp/k1c-usb-ethernet-v1.0.1-runtime/install.sh --enable-boot
+sh /tmp/k1c-usb-ethernet-v1.0.2-runtime/install.sh --enable-boot
 ```
 
 `--enable-boot` installs the boot hook so Ethernet-primary mode starts after a
 reboot. It does not start Ethernet-primary mode immediately.
 
 The installer refuses an existing package-owned installation. For upgrade from
-v1.0.0, keep Wi-Fi connected, stop Ethernet-primary mode, uninstall v1.0.0, and
-then install v1.0.1.
+v1.0.1, keep Wi-Fi connected, stop Ethernet-primary mode, uninstall v1.0.1, and
+then install v1.0.2.
 
 ## 5. Start Immediately
 

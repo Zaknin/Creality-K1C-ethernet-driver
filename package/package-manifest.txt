@@ -1,5 +1,5 @@
 package=k1c-usb-ethernet
-version=1.0.1
+version=1.0.2
 install_location=/usr/data/k1c-usb-ethernet/vendor-native-known-good
 boot_hook=/etc/init.d/S46usb_ethernet_primary
 expected_kernel=4.4.94

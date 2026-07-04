@@ -7,7 +7,7 @@ import zipfile
 from pathlib import Path
 
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 RUNTIME_PREFIX = f"k1c-usb-ethernet-v{VERSION}-runtime"
 SOURCE_PREFIX = f"k1c-usb-ethernet-v{VERSION}-source"
 EPOCH = 1704067200

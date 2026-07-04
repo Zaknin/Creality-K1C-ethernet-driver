@@ -1,4 +1,4 @@
-# Creality K1C USB Ethernet Driver v1.0.1
+# Creality K1C USB Ethernet Driver v1.0.2
 
 This release has two separate workflows.
 
@@ -34,18 +34,15 @@ See [docs/SUPPORTED-HARDWARE.md](docs/SUPPORTED-HARDWARE.md) before installing.
 - Root SSH access to the printer.
 - Wi-Fi left enabled during installation and testing.
 - The supported USB Ethernet adapter and Ethernet cable connected.
-- The `v1.0.1-runtime` archive and matching `SHA256SUMS`.
+- The `v1.0.2-runtime` archive and matching `SHA256SUMS`.
 
 Installing files does not automatically start Ethernet-primary mode. Start it
 explicitly after installation, or reboot after enabling boot integration.
 
 ## Release State
 
-`v1.0.1` is qualified for the documented 2023-generation K1C target. It fixes
-the installer path-resolution defect found in `v1.0.0`, separates prebuilt
-runtime packaging from source/build packaging, and has completed both runtime
-physical qualification and source-build acceptance. The production module
-binaries remain byte-identical to the physically tested v1.0.1 runtime
-candidate.
+`v1.0.2` is a boot DHCP acquisition patch for the documented 2023-generation
+K1C target. It keeps the supported hardware scope and production module
+binaries unchanged from the physically tested v1.0.1 runtime candidate.
 
 See [docs/RELEASE-HISTORY.md](docs/RELEASE-HISTORY.md) for upgrade guidance.
