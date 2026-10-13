@@ -6,9 +6,15 @@ Candidate CDC-NCM SHA-256 f12a6cc8faf904a72cb44e21e6ec520efe24b37ae9999a40a1ca01
 
 ---
 
-# Release Qualification
+# Historical qualification record: v1.0.1 (not v1.0.3)
 
-## Verdict
+The records below document the earlier **v1.0.1** runtime/source
+qualification. References to frozen v1.0.1 module hashes, completed
+installer gates, and that version's release verdict **do not apply**
+to the updated v1.0.3 `cdc_ncm.ko`. The separately validated v1.0.3
+receive filtering is described above.
+
+## v1.0.1 verdict
 
 `GO_RUNTIME_AND_SOURCE_QUALIFICATION_COMPLETE`
 
