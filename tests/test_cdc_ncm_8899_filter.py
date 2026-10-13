@@ -103,6 +103,11 @@ static void run_case(unsigned short a, unsigned short b, bool enabled,
 }
 int main(void)
 {
+    u8 tiny[14] = { 0 };
+    tiny[12] = 0x88; tiny[13] = 0x99;
+    drop_l2_8899 = true;
+    assert(!cdc_ncm_should_drop_8899(tiny, 13)); /* No short reads */
+    assert(cdc_ncm_should_drop_8899(tiny, 14));
     run_case(0x8899, 0x0800, true, 1);   /* Drop only Realtek */
     run_case(0x8899, 0x0800, false, 2);  /* Runtime toggle off */
     run_case(0x8898, 0x0800, true, 2);   /* Neighbor EtherType survives */
