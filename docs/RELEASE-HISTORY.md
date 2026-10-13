@@ -2,7 +2,11 @@
 
 ## v1.0.3
 
-Adds two independently switchable CDC-NCM RX policies: 0x8899 filtering ON by default, and opt-in strict IPv4-only allowlist OFF by default. The boot/DHCP/Wi-Fi scripts remain unchanged from v1.0.2. See FILTER-MODES-v1.0.3.md and HARDWARE-VALIDATION-2026-10-13.md.
+Adds two independently switchable CDC-NCM RX policies: 0x8899 filtering ON by default, and opt-in strict IPv4-oriented allowlist OFF by default. The boot/DHCP/Wi-Fi scripts remain unchanged from v1.0.2. The new CDC-NCM module was validated by repeated hardware A/B/C tests and watchdog rollback; a complete package upgrade/reboot regression has not been separately qualified.
+
+**Known limitation:** the independent AX88179B repeating connection/speed notification issue (#1) is not fixed by this release. Read [FILTER-MODES-v1.0.3.md](FILTER-MODES-v1.0.3.md) and [HARDWARE-VALIDATION-2026-10-13.md](HARDWARE-VALIDATION-2026-10-13.md).
+
+To upgrade an existing v1.0.1/v1.0.2 package-owned runtime, keep Wi-Fi SSH connected, stop and uninstall the old runtime, then install v1.0.3. See [the current upgrade guide](https://github.com/Zaknin/Creality-K1C-ethernet-driver/blob/main/docs/LATEST-RUNTIME.md).
 
 ## v1.0.2
 
