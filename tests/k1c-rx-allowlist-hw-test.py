@@ -89,8 +89,8 @@ def assert_stock_preflight(expected_hash):
     route = invoke([IP, "-4", "route"], quiet=True)
     if "192.0.2.15/" not in addr:
         raise RuntimeError("Wi-Fi 192.0.2.15 is missing")
-    if "dev wlan0" not in route:
-        raise RuntimeError("Wi-Fi fallback route is missing")
+    if not re.search(r"^default .* dev wlan0\b", route, re.M):
+        raise RuntimeError("Wi-Fi default fallback route is missing")
 
     # The previous run's PID file can remain after reboot. Only an actual
     # still-running rollback.sh process is a reason to refuse re-arming.
@@ -99,7 +99,8 @@ def assert_stock_preflight(expected_hash):
             cmdline = (p / "cmdline").read_bytes()
         except (OSError, PermissionError):
             continue
-        if b"/rx-allowlist-test/rollback.sh" in cmdline:
+        if (b"/k1c-usb-ethernet/" in cmdline and
+                b"/rollback.sh" in cmdline):
             raise RuntimeError("another allowlist rollback watchdog running")
 
     say("Candidate SHA-256 OK: " + digest)
