@@ -1,0 +1,36 @@
+name: Build-tools documentation and repository regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - README.md
+      - CHANGELOG.md
+      - DISCLAIMER.md
+      - THIRD-PARTY-NOTICES.md
+      - docs/**
+      - tests/**
+      - .github/workflows/docs-validation.yml
+  pull_request:
+    paths:
+      - README.md
+      - CHANGELOG.md
+      - DISCLAIMER.md
+      - THIRD-PARTY-NOTICES.md
+      - docs/**
+      - tests/**
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run existing build-tools regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh tests/run-all.sh
