@@ -179,6 +179,7 @@ def main():
         path = pathlib.Path(d)
         (path / "regression.c").write_text(PREAMBLE + "\n" + functions + "\n" + TESTS)
         subprocess.run(["cc", "-std=gnu11", "-Wall", "-Wextra",
+                        "-Werror", "-Wno-sign-compare",
                         "-Wno-unused-but-set-variable", "-o", str(path / "regression"),
                         str(path / "regression.c")], check=True)
         subprocess.run([str(path / "regression")], check=True)
