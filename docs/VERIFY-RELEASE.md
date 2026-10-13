@@ -5,9 +5,9 @@
 Download `SHA256SUMS` and the assets you plan to use:
 
 ```text
-k1c-usb-ethernet-v1.0.2-runtime.tar.gz
-k1c-usb-ethernet-v1.0.2-runtime.zip
-k1c-usb-ethernet-v1.0.2-source.tar.gz
+k1c-usb-ethernet-v1.0.3-runtime.tar.gz
+k1c-usb-ethernet-v1.0.3-runtime.zip
+k1c-usb-ethernet-v1.0.3-source.tar.gz
 ```
 
 Run:
@@ -23,7 +23,7 @@ Only use assets that report `OK`.
 After extracting the runtime archive:
 
 ```sh
-cd k1c-usb-ethernet-v1.0.2-runtime/package
+cd k1c-usb-ethernet-v1.0.3-runtime/package
 sha256sum -c module-hashes.sha256
 sha256sum -c SHA256SUMS
 ```

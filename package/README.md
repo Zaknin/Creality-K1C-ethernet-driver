@@ -1,7 +1,7 @@
 # Runtime Package
 
 This directory is the installed runtime payload for Creality K1C USB Ethernet
-v1.0.1. It contains the prebuilt production modules and the scripts needed to
+v1.0.3. It contains the prebuilt production modules and the scripts needed to
 install, start, stop, inspect, disable, and uninstall them.
 
 ## Supported Target
