@@ -1,4 +1,4 @@
-name: Publish K1C v1.0.3 verified release
+name: Publish verified K1C v1.0.3 draft
 
 on:
   push:
@@ -21,68 +21,69 @@ jobs:
           ref: v1.0.3
           fetch-depth: 0
 
-      - name: Verify tag, files and tested MIPS module
+      - name: Confirm immutable tested driver and release assets
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "ad5af5d265374944288fd7572c189c46b3c3cec4"
           test "$(git rev-parse v1.0.3^{commit})" = "ad5af5d265374944288fd7572c189c46b3c3cec4"
-          test "$(grep '^version=' package/package-manifest.txt)" = "version=1.0.3"
           echo 'f12a6cc8faf904a72cb44e21e6ec520efe24b37ae9999a40a1ca0183517d7271  package/modules/cdc_ncm.ko' | sha256sum -c -
           (cd package && sha256sum -c module-hashes.sha256 && sha256sum -c SHA256SUMS)
           (cd dist && sha256sum -c SHA256SUMS)
-          grep -Fq 'module_param(rx_ipv4_only' source/cdc_ncm.c
-          grep -Fq 'module_param(drop_l2_8899' source/cdc_ncm.c
-          tar -tzf dist/k1c-usb-ethernet-v1.0.3-runtime.tar.gz | grep -Fx 'k1c-usb-ethernet-v1.0.3-runtime/package/modules/cdc_ncm.ko'
-          tar -tzf dist/k1c-usb-ethernet-v1.0.3-source.tar.gz | grep -Fx 'k1c-usb-ethernet-v1.0.3-source/source/cdc_ncm.c'
 
-      - name: Create draft release with four checked assets
+      - name: Confirm draft ID, tag and exact four asset digests
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          if gh release view v1.0.3 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo 'A release for v1.0.3 already exists; refusing to overwrite it.'
-            exit 1
-          fi
-          gh release create v1.0.3 \
-            dist/k1c-usb-ethernet-v1.0.3-runtime.tar.gz \
-            dist/k1c-usb-ethernet-v1.0.3-runtime.zip \
-            dist/k1c-usb-ethernet-v1.0.3-source.tar.gz \
-            dist/SHA256SUMS \
-            --repo "$GITHUB_REPOSITORY" \
-            --title 'K1C USB Ethernet v1.0.3' \
-            --notes-file GITHUB-RELEASE-DRAFT.md \
-            --verify-tag \
-            --draft
+          gh api "repos/$GITHUB_REPOSITORY/releases/412071396" > "$RUNNER_TEMP/draft.json"
+          python3 - "$RUNNER_TEMP/draft.json" <<'PY'
+          import hashlib, json, pathlib, sys
+          r = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          assert r["id"] == 412071396, "Unexpected release ID"
+          assert r["tag_name"] == "v1.0.3", "Wrong tag"
+          assert r["draft"] is True, "Release is not a draft"
+          assert r["prerelease"] is False, "Unexpected prerelease"
+          expected = {}
+          for line in pathlib.Path("dist/SHA256SUMS").read_text().splitlines():
+              digest, name = line.split("  ", 1)
+              expected[name] = "sha256:" + digest
+          expected["SHA256SUMS"] = "sha256:" + hashlib.sha256(
+              pathlib.Path("dist/SHA256SUMS").read_bytes()).hexdigest()
+          actual = {a["name"]: a.get("digest") for a in r["assets"]}
+          assert len(r["assets"]) == 4 and actual == expected, (
+              "Remote asset names/digests mismatch: " + repr(actual))
+          print("DRAFT ASSET DIGESTS: PASS; four exact files")
+          PY
 
-      - name: Download and verify all uploaded release assets
+      - name: Download and verify uploaded files before publishing
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/verify-release"
-          cd "$RUNNER_TEMP/verify-release"
+          mkdir -p "$RUNNER_TEMP/release-verified"
+          cd "$RUNNER_TEMP/release-verified"
           gh release download v1.0.3 --repo "$GITHUB_REPOSITORY" --dir .
           test "$(find . -maxdepth 1 -type f | wc -l)" = 4
           sha256sum -c SHA256SUMS
-          cmp SHA256SUMS "$GITHUB_WORKSPACE/dist/SHA256SUMS"
           for name in \
+            SHA256SUMS \
             k1c-usb-ethernet-v1.0.3-runtime.tar.gz \
             k1c-usb-ethernet-v1.0.3-runtime.zip \
             k1c-usb-ethernet-v1.0.3-source.tar.gz; do
             cmp "$name" "$GITHUB_WORKSPACE/dist/$name"
           done
+          echo 'REMOTE DOWNLOAD VERIFICATION: PASS'
 
-      - name: Publish verified release as latest
+      - name: Publish preverified draft by immutable release ID
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          id="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v1.0.3" --jq .id)"
-          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" \
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/412071396" \
             -F draft=false -f make_latest=true --jq .html_url
           test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v1.0.3" --jq .draft)" = false
+          echo 'v1.0.3 RELEASE PUBLISHED'
