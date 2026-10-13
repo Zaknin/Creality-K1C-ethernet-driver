@@ -1,4 +1,14 @@
-# Experimental K1C IPv4-only L2 allowlist
+# Historical development notes: K1C IPv4-only L2 allowlist
+
+**Historical note (2026-10-14):** This test plan preceded the successfully
+published [v1.0.3 release](https://github.com/Zaknin/Creality-K1C-ethernet-driver/releases/tag/v1.0.3).
+The full three-mode hardware trial subsequently passed (strict mode: 0 RX
+drops in both 25-second windows; 18/18 ping; zero measured RX errors)
+and the watchdog restored the original driver. See
+[hardware results](HARDWARE-VALIDATION-2026-10-13.md) and
+[shipping controls](FILTER-MODES-v1.0.3.md). The remaining steps below
+are preserved for historical reproduction, **not** required for users
+installing the finished release.
 
 This is an **experimental extension** of the physically validated `0x8899`
 filter branch, and **not** a claim that the driver can automatically query
@@ -32,8 +42,8 @@ With `rx_ipv4_only=1`, accept:
 
 Silently discard all other **Ethernet-II** EtherTypes in the
 validated CDC-NCM RX frame loop, before skb allocation. Filtered
-payload bytes are still accounted for in `rx_overhead` bookkeeping
-as received NTB payload.
+payload bytes are accounted for as **NTB payload**, not as
+`rx_overhead`; this preserves the meaning of the overhead counter.
 
 This means IPv6, 802.1X/EAPOL, PPPoE, LLDP, PTP, 0x8899, etc. **will
 not work in strict mode**. It is suitable only for a printer whose
@@ -76,8 +86,8 @@ the native regression and cross-build succeed.
 
 The existing `0x8899` branch passed hardware A/B testing
 with 1 vs 44 `rx_dropped` (equal aggregate 50s windows) and a
-10/10 USB-IPv4 ping test. **Those measurements do not yet apply
-to this broader experimental branch.**
+10/10 USB-IPv4 ping test. Those early measurements covered only the narrow experimental branch;
+see the later successful three-mode v1.0.3 hardware trial linked above.
 
 ## Physical three-mode A/B/C runner
 
