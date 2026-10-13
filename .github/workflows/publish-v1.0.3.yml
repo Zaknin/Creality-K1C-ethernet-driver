@@ -1,0 +1,88 @@
+name: Publish K1C v1.0.3 verified release
+
+on:
+  push:
+    branches:
+      - release/v1.0.3-rc1
+    paths:
+      - .github/workflows/publish-v1.0.3.yml
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out the immutable v1.0.3 tag
+        uses: actions/checkout@v4
+        with:
+          ref: v1.0.3
+          fetch-depth: 0
+
+      - name: Verify tag, files and tested MIPS module
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "ad5af5d265374944288fd7572c189c46b3c3cec4"
+          test "$(git rev-parse v1.0.3^{commit})" = "ad5af5d265374944288fd7572c189c46b3c3cec4"
+          test "$(grep '^version=' package/package-manifest.txt)" = "version=1.0.3"
+          echo 'f12a6cc8faf904a72cb44e21e6ec520efe24b37ae9999a40a1ca0183517d7271  package/modules/cdc_ncm.ko' | sha256sum -c -
+          (cd package && sha256sum -c module-hashes.sha256 && sha256sum -c SHA256SUMS)
+          (cd dist && sha256sum -c SHA256SUMS)
+          grep -Fq 'module_param(rx_ipv4_only' source/cdc_ncm.c
+          grep -Fq 'module_param(drop_l2_8899' source/cdc_ncm.c
+          tar -tzf dist/k1c-usb-ethernet-v1.0.3-runtime.tar.gz | grep -Fx 'k1c-usb-ethernet-v1.0.3-runtime/package/modules/cdc_ncm.ko'
+          tar -tzf dist/k1c-usb-ethernet-v1.0.3-source.tar.gz | grep -Fx 'k1c-usb-ethernet-v1.0.3-source/source/cdc_ncm.c'
+
+      - name: Create draft release with four checked assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view v1.0.3 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'A release for v1.0.3 already exists; refusing to overwrite it.'
+            exit 1
+          fi
+          gh release create v1.0.3 \
+            dist/k1c-usb-ethernet-v1.0.3-runtime.tar.gz \
+            dist/k1c-usb-ethernet-v1.0.3-runtime.zip \
+            dist/k1c-usb-ethernet-v1.0.3-source.tar.gz \
+            dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" \
+            --title 'K1C USB Ethernet v1.0.3' \
+            --notes-file GITHUB-RELEASE-DRAFT.md \
+            --verify-tag \
+            --draft
+
+      - name: Download and verify all uploaded release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/verify-release"
+          cd "$RUNNER_TEMP/verify-release"
+          gh release download v1.0.3 --repo "$GITHUB_REPOSITORY" --dir .
+          test "$(find . -maxdepth 1 -type f | wc -l)" = 4
+          sha256sum -c SHA256SUMS
+          cmp SHA256SUMS "$GITHUB_WORKSPACE/dist/SHA256SUMS"
+          for name in \
+            k1c-usb-ethernet-v1.0.3-runtime.tar.gz \
+            k1c-usb-ethernet-v1.0.3-runtime.zip \
+            k1c-usb-ethernet-v1.0.3-source.tar.gz; do
+            cmp "$name" "$GITHUB_WORKSPACE/dist/$name"
+          done
+
+      - name: Publish verified release as latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          id="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v1.0.3" --jq .id)"
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" \
+            -F draft=false -f make_latest=true --jq .html_url
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v1.0.3" --jq .draft)" = false
