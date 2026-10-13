@@ -23,10 +23,12 @@ def extract(start):
 
 
 helper = extract('static bool cdc_ncm_should_drop_8899(')
+other_helper = extract('static bool cdc_ncm_should_drop_other_l2(')
 rx_fixup = extract('int cdc_ncm_rx_fixup(')
 assert 'payload += len;' in rx_fixup, 'filtered bytes must count as NTB payload'
 assert rx_fixup.index('len < ETH_HLEN') < rx_fixup.index('cdc_ncm_should_drop_8899(')
 assert rx_fixup.index('cdc_ncm_should_drop_8899(') < rx_fixup.index('netdev_alloc_skb_ip_align(')
+assert rx_fixup.index('cdc_ncm_should_drop_other_l2(') < rx_fixup.index('netdev_alloc_skb_ip_align(')
 
 harness = r'''
 #include <assert.h>
@@ -36,8 +38,13 @@ harness = r'''
 #include <string.h>
 #include <stdio.h>
 typedef uint8_t u8;
+typedef uint16_t u16;
 typedef uint32_t u32;
 #define ETH_HLEN 14
+#define ETH_P_IP 0x0800
+#define ETH_P_ARP 0x0806
+#define ETH_P_8021Q 0x8100
+#define ETH_P_8021AD 0x88a8
 #define USB_CDC_NCM_NDP16_NOCRC_SIGN 0x304d434e
 #define cpu_to_le32(x) (x)
 #define le32_to_cpu(x) (x)
@@ -56,6 +63,7 @@ struct cdc_ncm_ctx { unsigned int rx_max; unsigned int rx_overhead, rx_ntbs; };
 struct usbnet { unsigned long data[5]; struct net_device *net; };
 static unsigned int delivered, allocated;
 static bool drop_l2_8899 = true;
+static bool rx_ipv4_only = false;
 static int cdc_ncm_rx_verify_nth16(struct cdc_ncm_ctx *ctx, struct sk_buff *skb)
 { (void)ctx; (void)skb; return 0; }
 static int cdc_ncm_rx_verify_ndp16(struct sk_buff *skb, int ndpoffset)
@@ -114,10 +122,20 @@ int main(void)
     run_case(0x86dd, 0x0800, true, 2);   /* IPv6 unaffected */
     run_case(0x0806, 0x0800, true, 2);   /* ARP and IPv4 unaffected */
     run_case(0x8899, 0x8899, true, 0);   /* All filtered NTB valid */
-    puts("PASS: actual CDC-NCM RX loop / 0x8899 targeted filter");
+    rx_ipv4_only = true;
+    run_case(0x86dd, 0x0800, false, 1);  /* Strict: IPv6 rejected */
+    run_case(0x88cc, 0x0806, false, 1);  /* Strict: LLDP rejected */
+    run_case(0x8899, 0x0800, false, 1);  /* Strict: 0x8899 rejected */
+    run_case(0x8100, 0x0800, false, 2);  /* VLAN 802.1Q retained */
+    run_case(0x88a8, 0x0800, false, 2);  /* VLAN 802.1ad retained */
+    run_case(0x0026, 0x0800, false, 2);  /* 802.3 LLC retained */
+    run_case(0x0806, 0x0800, false, 2);  /* ARP/IPv4 retained */
+    rx_ipv4_only = false;
+    run_case(0x86dd, 0x0800, false, 2);  /* Toggle strict mode off */
+    puts("PASS: actual CDC-NCM RX loop / targeted and IPv4-only filters");
 }
 '''
-harness = harness.replace('/* ACTUAL_FUNCTIONS */', helper + '\n' + rx_fixup)
+harness = harness.replace('/* ACTUAL_FUNCTIONS */', helper + '\n' + other_helper + '\n' + rx_fixup)
 
 with tempfile.TemporaryDirectory() as d:
     src = Path(d) / 'rx.c'
