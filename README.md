@@ -1,90 +1,92 @@
 # Creality K1C USB Ethernet Driver
 
-Add wired Ethernet/LAN connectivity to a **2023-generation Creality K1C**
-using a compatible USB-to-Ethernet adapter.
+Unofficial USB Ethernet connectivity for the **2023-generation Creality K1C**
+with Linux `4.4.94` and a compatible ASIX USB adapter (`0b95:1790`).
+The 2025 K1C revision has **not** been validated.
 
-The **K1C USB Ethernet v1.0.2** release includes ready-to-install Linux
-kernel modules and an installer. Normal installation does not require a
-compiler, vendor SDK, or kernel source tree. Source code and build tools
-are also available for users who want to compile the driver themselves.
+## Latest ready-to-install release: v1.0.3
 
-## Latest Release
+**[Download K1C USB Ethernet v1.0.3](https://github.com/Zaknin/Creality-K1C-ethernet-driver/releases/tag/v1.0.3)**
 
-The latest release is:
+The release provides **prebuilt** MIPS modules (`mii.ko`, `usbnet.ko`,
+`cdc_ncm.ko`), a printer installer, a source archive and a `SHA256SUMS`
+file. You do **not** need a compiler or SDK to install the runtime.
 
-**[K1C USB Ethernet v1.0.2](https://github.com/Zaknin/Creality-K1C-ethernet-driver/releases/tag/v1.0.2)**
+Choose one runtime archive:
+- `k1c-usb-ethernet-v1.0.3-runtime.tar.gz`
+- `k1c-usb-ethernet-v1.0.3-runtime.zip`
 
-This patch release fixes boot-time DHCP acquisition when `usb0` appears
-without an IPv4 address by waiting for carrier before starting bounded DHCP.
+Download `SHA256SUMS` and verify the selected archive before installing.
+The source archive is provided for users building modules themselves.
 
-The release provides two separate workflows.
+**[Current runtime installation and upgrade guide](docs/LATEST-RUNTIME.md)** ·
+**[Filter modes](https://github.com/Zaknin/Creality-K1C-ethernet-driver/blob/release/v1.0.3-rc1/docs/FILTER-MODES-v1.0.3.md)** ·
+**[Troubleshooting](https://github.com/Zaknin/Creality-K1C-ethernet-driver/blob/release/v1.0.3-rc1/docs/TROUBLESHOOTING.md)**
 
-### Install the prebuilt driver
+### Receive-filter options in v1.0.3
 
-Download one of these ready-to-install runtime packages from the v1.0.2 release:
+The `cdc_ncm` module provides two runtime switches:
 
-- `k1c-usb-ethernet-v1.0.2-runtime.tar.gz`
-- `k1c-usb-ethernet-v1.0.2-runtime.zip`
+| Parameter | Default | Function |
+|---|---|---|
+| `drop_l2_8899` | `Y` (on) | Silently discard the unsupported EtherType `0x8899` before delivery to the Linux network stack |
+| `rx_ipv4_only` | `N` (off) | Optional, more restrictive Ethernet receive policy: pass IPv4, ARP, 802.3-length frames and outer VLAN-tagged frames; discard other EtherTypes |
 
-These packages already contain the compiled kernel modules:
+The strict policy is **not** automatic kernel protocol discovery.
+It can discard IPv6, LLDP, EAPOL/802.1X, PPPoE and other traffic; VLAN
+outer tags are passed without inspecting the inner protocol. Keep it off
+unless you have validated your network. Sysfs changes **do not survive
+module reload or reboot**.
 
-- `mii.ko`
-- `usbnet.ko`
-- `cdc_ncm.ko`
+On one 2023 K1C, two 25-second hardware windows per mode measured
+25 `rx_dropped` with both filters off, 16 with only `0x8899` filtering,
+and **0** with strict filtering. All 18 gateway pings succeeded and the
+measured `rx_errors` did not increase. The traffic rates differed
+substantially; no performance gain is claimed.
 
-You do not need a compiler, SDK, or kernel source tree to install the prebuilt runtime.
+**Important for [Issue #1](https://github.com/Zaknin/Creality-K1C-ethernet-driver/issues/1):**
+v1.0.3 addresses one *possible source* of `rx_dropped` (unhandled L2
+EtherTypes). It does **not** include the separate patch for repeated
+`cdc_ncm ... network connection: connected` / speed notifications.
+Those two symptoms must be tested separately.
 
-Follow the installation instructions included in the runtime archive.
+### Supported hardware and recovery
 
-### Compile the driver from source
+- Physically tested: 2023-generation K1C, kernel `4.4.94`,
+  MIPS32_R2 ABI `4.4.94 SMP preempt mod_unload MIPS32_R2 32BIT`,
+  USB ID `0b95:1790`.
+- Unqualified: 2025-generation K1C, other kernels/ABIs and untested
+  adapter variants.
+- **Keep Wi-Fi SSH working during installation, upgrades and initial
+  tests.** The runtime uses USB metric `50` with Wi-Fi fallback metric
+  `300` when both are healthy.
+- Upgrades from v1.0.2 are **not in-place**: stop the old runtime,
+  uninstall the old package-owned tree, then install v1.0.3. See the
+  [upgrade guide](docs/LATEST-RUNTIME.md) and keep the v1.0.2 archive
+  for recovery.
+- The new driver and rollback were tested on hardware; a full fresh
+  v1.0.3 installer-upgrade/reboot qualification has **not** yet been
+  completed.
 
-Download:
+## About the default `main` branch
 
-- `k1c-usb-ethernet-v1.0.2-source.tar.gz`
+**This branch is the older v0.1.1 _build-tools_ lineage**, not the
+runtime/source tree shipped with v1.0.3. Its `VERSION=0.1.1` is intentional.
+The guides in `docs/BUILD.md`, `docs/CONFIGURATION.md`, and
+`docs/INSTALL.md` describe that historical **locally built** workflow
+with different install paths and boot hooks; they are **not** the
+prebuilt v1.0.3 installation procedure.
 
-The source package contains the driver source, build scripts, build records, and compilation documentation.
+For v1.0.3's corresponding source and installed runtime code, use
+the immutable [`v1.0.3` tag](https://github.com/Zaknin/Creality-K1C-ethernet-driver/tree/v1.0.3)
+and the release's source TAR. Updated explanatory documentation is
+maintained on the [release-maintenance branch](https://github.com/Zaknin/Creality-K1C-ethernet-driver/tree/release/v1.0.3-rc1).
+The separate build-tools and runtime histories were intentionally not merged.
 
-Compilation requires an external compatible K1C kernel tree and an Ingenic-compatible MIPS cross-compiler. These external dependencies are not included in the repository or release assets.
+## Licensing and disclaimer
 
-## Supported Hardware
-
-The prebuilt v1.0.1 runtime has been physically tested with:
-
-- 2023-generation Creality K1C
-- Linux kernel `4.4.94`
-- Module vermagic:
-  `4.4.94 SMP preempt mod_unload MIPS32_R2 32BIT`
-- Tested with:
-- UGREEN UR111 USB 3.0 to Gigabit Ethernet
-- UGREEN CR475 USB 3.0 to Ethernet Adapter, 5 in 1 Multiport Hub
-
-The 2025 K1C revision has not been tested. Compatibility with that revision is unknown and is not claimed.
-
-Keep Wi-Fi enabled during installation and initial testing so it remains available as a recovery path.
-
-## About This Branch
-
-The default `main` branch contains the separately published **v0.1.1 build tools**.
-
-These tools are intended for users who want to prepare a compatible kernel source tree, compile the modules themselves, package a local build, and deploy it to the printer.
-
-The current ready-to-install runtime is distributed through the immutable `v1.0.2` release and its annotated Git tag.
-
-The build-tools and runtime histories are intentionally separate and have not been merged.
-
-## Release Assets
-
-The v1.0.2 release contains exactly four custom assets:
-
-- `k1c-usb-ethernet-v1.0.2-runtime.tar.gz`
-- `k1c-usb-ethernet-v1.0.2-runtime.zip`
-- `k1c-usb-ethernet-v1.0.2-source.tar.gz`
-- [`SHA256SUMS`](https://github.com/Zaknin/Creality-K1C-ethernet-driver/releases/download/v1.0.2/SHA256SUMS)
-
-Verify downloaded files using `SHA256SUMS` before installation or compilation.
-
-## Disclaimer
-
-This is an unofficial community project and is not affiliated with, endorsed by, or supported by Creality.
-
-Kernel-derived source and compiled kernel modules remain subject to their applicable licenses. Project-authored scripts, documentation, and tools are covered by the licensing information included with the relevant release or branch.
+This is an independent community project, not affiliated with or
+endorsed by Creality. The distributed kernel-derived sources/modules
+retain their own applicable licenses. See the `COPYING` and `LICENSE.md`
+files in the runtime release, and this build-tools branch's
+`DISCLAIMER.md` and `THIRD-PARTY-NOTICES.md`.
