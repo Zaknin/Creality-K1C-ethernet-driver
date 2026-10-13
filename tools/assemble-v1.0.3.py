@@ -96,6 +96,12 @@ def stage_runtime(work, candidate):
     edit_exact(pkg / "package-manifest.txt",
                "module_cdc_ncm_sha256=6ff51a9ec99089245d0cad267ac83d312193bb6818f8cec6519c1983cbe8f2bc",
                "module_cdc_ncm_sha256=" + EXPECTED["cdc_ncm.ko"])
+    edit_exact(pkg / "package-manifest.txt",
+               "runtime_physical_qualification=PASS",
+               "runtime_physical_qualification=RX_FILTER_HW_PASS_FULL_INSTALL_PENDING")
+    edit_exact(pkg / "package-manifest.txt",
+               "overall_release_verdict=GO_RUNTIME_AND_SOURCE_QUALIFICATION_COMPLETE",
+               "overall_release_verdict=V1_0_3_CANDIDATE_ASSET_VERIFICATION_REQUIRED")
     pkg_manifest = pkg / "package-manifest.txt"
     with pkg_manifest.open("a") as out:
         out.write("rx_filter_drop_l2_8899_default=Y\n")
