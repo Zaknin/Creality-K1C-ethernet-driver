@@ -1401,6 +1401,34 @@ static bool cdc_ncm_should_drop_8899(const u8 *frame, unsigned int len)
 	       frame[12] == 0x88 && frame[13] == 0x99;
 }
 
+/*
+ * Optional K1C IPv4-only receive policy. Unlike the targeted 0x8899
+ * filter, this rejects every Ethernet-II EtherType except IPv4/ARP.
+ * Retain 802.3 length-coded frames and VLAN tags for kernel processing.
+ * Keep off by default: 802.1X, PPPoE, LLDP, IPv6, etc. would be dropped.
+ */
+static bool rx_ipv4_only;
+module_param(rx_ipv4_only, bool, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(rx_ipv4_only,
+		 "Drop non-IPv4/ARP/802.3/VLAN RX frames (default: off)");
+
+static bool cdc_ncm_should_drop_other_l2(const u8 *frame, unsigned int len)
+{
+	u16 proto;
+
+	if (!rx_ipv4_only || len < ETH_HLEN)
+		return false;
+
+	proto = ((u16)frame[12] << 8) | frame[13];
+
+	/* Below 0x0600 the field is an 802.3 length, not EtherType. */
+	if (proto < 0x0600)
+		return false;
+
+	return proto != ETH_P_IP && proto != ETH_P_ARP &&
+	       proto != ETH_P_8021Q && proto != ETH_P_8021AD;
+}
+
 int cdc_ncm_rx_fixup(struct usbnet *dev, struct sk_buff *skb_in)
 {
 	struct sk_buff *skb;
@@ -1463,7 +1491,8 @@ next_ndp:
 			 * This is a valid datagram, even when ignored. Include
 			 * its bytes in NTB payload accounting, not rx_overhead.
 			 */
-			if (cdc_ncm_should_drop_8899(skb_in->data + offset, len)) {
+			if (cdc_ncm_should_drop_8899(skb_in->data + offset, len) ||
+			    cdc_ncm_should_drop_other_l2(skb_in->data + offset, len)) {
 				payload += len;
 				continue;
 			}
