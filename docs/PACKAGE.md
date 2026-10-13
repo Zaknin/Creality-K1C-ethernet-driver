@@ -1,5 +1,10 @@
 # Package The Local Build
 
+> **Scope:** This document describes the legacy **v0.1.1 local build-tools**
+> workflow in the `main` branch, **not** the prebuilt v1.0.3 release.
+> Installation directories, startup scripts and runtime policies differ.
+> For the current prebuilt release use the [current v1.0.3 runtime guide](LATEST-RUNTIME.md).
+>
 Run packaging on the Linux or WSL build machine after verification passes.
 
 ```sh
