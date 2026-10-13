@@ -1,5 +1,13 @@
 # Release Qualification
 
+## v1.0.3 hardware qualification
+
+Candidate CDC-NCM SHA-256 f12a6cc8faf904a72cb44e21e6ec520efe24b37ae9999a40a1ca0183517d7271. Two A/B/C cycles, 18/18 USB pings, zero RX error counter increments and stock watchdog rollback PASS. Full v1.0.3 installer-upgrade qualification is still separate from this RX module validation. See docs/HARDWARE-VALIDATION-2026-10-13.md.
+
+---
+
+# Release Qualification
+
 ## Verdict
 
 `GO_RUNTIME_AND_SOURCE_QUALIFICATION_COMPLETE`

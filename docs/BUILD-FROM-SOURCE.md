@@ -1,6 +1,6 @@
 # Build From Source
 
-Use this guide with `k1c-usb-ethernet-v1.0.2-source.tar.gz`.
+Use this guide with `k1c-usb-ethernet-v1.0.3-source.tar.gz`.
 
 The source archive does not contain compiled `.ko` modules. The compiled
 reference modules are in the runtime archive.

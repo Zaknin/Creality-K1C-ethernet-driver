@@ -1,5 +1,9 @@
 # Release History
 
+## v1.0.3
+
+Adds two independently switchable CDC-NCM RX policies: 0x8899 filtering ON by default, and opt-in strict IPv4-only allowlist OFF by default. The boot/DHCP/Wi-Fi scripts remain unchanged from v1.0.2. See FILTER-MODES-v1.0.3.md and HARDWARE-VALIDATION-2026-10-13.md.
+
 ## v1.0.2
 
 Status: boot DHCP acquisition patch for the documented 2023-generation K1C
