@@ -1,10 +1,10 @@
 # Third-Party Notices
 
-This repository does not vendor third-party source code, kernel source, SDKs, toolchains, sysroots, firmware, or binary kernel modules.
+This default `main` branch is the **v0.1.1 scripts-only build-tools** lineage; it does not vendor third-party kernel source, SDKs, toolchains, sysroots, firmware, or binary kernel modules. The independently versioned [v1.0.3 runtime release](https://github.com/Zaknin/Creality-K1C-ethernet-driver/releases/tag/v1.0.3) distributes **prebuilt kernel modules and corresponding module source** under their applicable licenses, but still does not distribute a vendor SDK, full kernel source, toolchain or firmware.
 
 ## Project code
 
-Original repository scripts, tools, tests, and documentation are released under the [MIT License](LICENSE).
+Original build-tools branch scripts, tools, tests, and documentation are released under the [MIT License](LICENSE). Refer separately to the kernel/source licenses supplied with the v1.0.3 release.
 
 ## Linux kernel and modules
 
