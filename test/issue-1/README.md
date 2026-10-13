@@ -32,7 +32,7 @@ the reporter's AX88179B is needed to confirm the fix.
 
 On the printer, logged in over **Wi-Fi SSH**:
 
-\`\`\`sh
+```sh
 T=/usr/data/k1c-usb-ethernet/issue1-eval
 mkdir -p "$T"
 cd "$T" || exit 1
@@ -43,7 +43,7 @@ wget -O run-test.sh "$BASE/run-test.sh"
 
 echo '5cb1573d71fd1c3df6878e544dade7ef52f132a46bbc8bd238ed124d56104d8c  cdc_ncm.ko' | sha256sum -c -
 sh run-test.sh preflight
-\`\`\`
+```
 
 Both checks must pass. If the printer cannot fetch HTTPS, download the
 two files on your computer and upload them over your existing SSH connection.
@@ -53,20 +53,20 @@ Do **not** proceed if either download or hash verification fails.
 
 1. Record 120 seconds using stock v1.0.2:
 
-   \`\`\`sh
+   ```sh
    cd /usr/data/k1c-usb-ethernet/issue1-eval || exit 1
    sh run-test.sh baseline > baseline.log 2>&1
-   \`\`\`
+   ```
 
 2. Switch to the test module and arm the independent reboot watchdog.
    Start this command **only once**. Running it detached is deliberate:
    it can continue if SSH disconnects during network reconfiguration.
 
-   \`\`\`sh
+   ```sh
    nohup sh run-test.sh start </dev/null > switch.log 2>&1 &
    sleep 20
    cat switch.log
-   \`\`\`
+   ```
 
    Expect cdc_ncm size **17180** in the module listing and DHCP on usb0.
    The original loaded module is size **17148**. If switching fails, **do not
@@ -74,19 +74,19 @@ Do **not** proceed if either download or hash verification fails.
 
 3. While the test module is active, record the same 120-second sample:
 
-   \`\`\`sh
+   ```sh
    sh run-test.sh sample > candidate.log 2>&1
-   \`\`\`
+   ```
 
 4. Optional but useful: test one real link transition while the
    candidate is active. Start the background recorder, unplug **only the
    Ethernet cable** for ~15 seconds, reconnect it, then wait ~45 seconds.
 
-   \`\`\`sh
+   ```sh
    nohup sh run-test.sh monitor </dev/null > physical.log 2>&1 &
-   \`\`\`
+   ```
 
-   Check physical.log and run \`sh run-test.sh status\`. Expect the carrier
+   Check physical.log and run `sh run-test.sh status`. Expect the carrier
    to transition 1 -> 0 -> 1, Wi-Fi fallback during the outage, and USB
    routing to return after reconnection.
 
@@ -94,13 +94,13 @@ Do **not** proceed if either download or hash verification fails.
 
 Allow the timed reboot to complete. If necessary, reconnect to the Wi-Fi IP.
 
-\`\`\`sh
+```sh
 cd /usr/data/k1c-usb-ethernet/issue1-eval || exit 1
 cat watchdog.log
 sh run-test.sh status
 (cd /usr/data/k1c-usb-ethernet/vendor-native-known-good &&
  sha256sum -c module-hashes.sha256)
-\`\`\`
+```
 
 Expect the original cdc_ncm size **17148** and all original module
 checksums to pass. The test files/logs stay under issue1-eval; nothing
@@ -108,7 +108,7 @@ replaces the v1.0.2 installation.
 
 Please attach baseline.log, candidate.log, switch.log, and (if collected)
 physical.log to issue #1. Also report whether the repetitive
-\`network connection: connected\` / \`1000 mbit/s\` lines stopped and
+`network connection: connected` / `1000 mbit/s` lines stopped and
 whether connectivity remained stable.
 
 **Note:** dmesg and syslog can be circular/rotated; a count that stays
