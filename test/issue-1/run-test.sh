@@ -124,7 +124,7 @@ status() {
   echo '=== WATCHDOG ==='
   cat "$T/watchdog.log" 2>/dev/null || true
 }
-case "$1" in
+case "${1:-}" in
   preflight) preflight; echo 'PREFLIGHT PASS' ;;
   baseline) sample STOCK_V1.0.2 ;;
   start) start ;;
