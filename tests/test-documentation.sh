@@ -46,6 +46,8 @@ docs = [
     "docs/CONFIGURATION.md",
     "docs/TROUBLESHOOTING.md",
     "docs/UNINSTALL.md",
+    "docs/LATEST-RUNTIME.md",
+    "docs/ISSUE-1-FIELD-TEST.md",
 ]
 
 for rel in host_scripts + runtime_scripts + docs:
@@ -56,33 +58,43 @@ for rel in host_scripts:
     subprocess.run(["sh", str(root / rel), "--help"], check=True, stdout=subprocess.DEVNULL)
 
 readme = (root / "README.md").read_text(encoding="utf-8")
+legacy_docs = "\n".join((root / d).read_text(encoding="utf-8") for d in docs
+                        if d not in ("docs/LATEST-RUNTIME.md",
+                                     "docs/ISSUE-1-FIELD-TEST.md"))
+
+# The legacy build-tools branch still needs its entire documented workflow,
+# but the root README is now the current prebuilt runtime landing page.
 for rel in host_scripts:
-    if rel not in readme:
-        raise SystemExit(f"README does not mention {rel}")
+    if rel not in legacy_docs:
+        raise SystemExit(f"legacy build-tools docs omit {rel}")
 
 required_readme = [
-    "git clone https://github.com/Zaknin/Creality-K1C-ethernet-driver.git",
-    "scripts/check-environment.sh --env ../k1c-build.env",
-    "scripts/inspect-kernel-tree.sh --kernel-dir \"$KERNEL_DIR\"",
-    "scripts/build-modules.sh --env ../k1c-build.env",
-    "scripts/verify-modules.sh",
-    "scripts/package-local-build.sh",
-    "output/package/k1c-usb-ethernet-local.tar.gz",
-    "scripts/deploy-to-printer.sh",
-    "scripts/install-on-printer.sh --host \"$PRINTER_HOST\"",
-    "/usr/data/k1c-usb-ethernet-local/runtime/",
-    "scripts/test-connectivity.sh --host \"$PRINTER_HOST\"",
-    "scripts/enable-boot.sh --host \"$PRINTER_HOST\"",
-    "scripts/disable-boot.sh --host \"$PRINTER_HOST\"",
-    "scripts/uninstall-from-printer.sh --host \"$PRINTER_HOST\"",
-    "output/diagnostics/printer-diagnostics.txt",
-    "mii.ko",
-    "usbnet.ko",
-    "cdc_ncm.ko",
+    "v1.0.3",
+    "releases/tag/v1.0.3",
+    "docs/LATEST-RUNTIME.md",
+    "drop_l2_8899",
+    "rx_ipv4_only",
+    "v0.1.1",
+    "not",
+    "2023-generation",
+    "4.4.94",
 ]
 for text in required_readme:
     if text not in readme:
-        raise SystemExit(f"README missing workflow text: {text}")
+        raise SystemExit(f"README missing current release text: {text}")
+
+current_guide = (root / "docs/LATEST-RUNTIME.md").read_text(encoding="utf-8")
+for text in (
+    "k1c-usb-ethernet-v1.0.3-runtime.tar.gz",
+    "stop-primary-ethernet.sh",
+    "uninstall-usb-ethernet.sh",
+    "drop_l2_8899",
+    "rx_ipv4_only",
+    "Wi-Fi",
+    "rx_errors",
+):
+    if text not in current_guide:
+        raise SystemExit(f"latest runtime guide missing {text}")
 
 bad_claims = [
     r"prebuilt modules are included",
