@@ -50,9 +50,11 @@ def copy_path(src, dst):
 
 def edit_exact(path, old, new):
     content = path.read_text()
-    if content.count(old) != 1:
-        raise RuntimeError("expected exactly one {!r} in {}".format(old, path))
-    path.write_text(content.replace(old, new))
+    if content.count(old) == 1:
+        path.write_text(content.replace(old, new))
+    elif content.count(new) != 1:
+        raise RuntimeError("expected exactly one {!r} or {!r} in {}".format(
+            old, new, path))
 
 
 def manifest_hashes(pkg):
@@ -104,9 +106,14 @@ def stage_runtime(work, candidate):
                "overall_release_verdict=V1_0_3_CANDIDATE_ASSET_VERIFICATION_REQUIRED")
     pkg_manifest = pkg / "package-manifest.txt"
     with pkg_manifest.open("a") as out:
-        out.write("rx_filter_drop_l2_8899_default=Y\n")
-        out.write("rx_filter_ipv4_only_default=N\n")
-        out.write("rx_filter_hardware_ab_validation=PASS_2026-10-13\n")
+        existing = pkg_manifest.read_text()
+        for line in (
+            "rx_filter_drop_l2_8899_default=Y",
+            "rx_filter_ipv4_only_default=N",
+            "rx_filter_hardware_ab_validation=PASS_2026-10-13",
+        ):
+            if line not in existing.splitlines():
+                out.write(line + "\n")
     pkg_readme = pkg / "README.md"
     pkg_readme.write_text(pkg_readme.read_text().replace("v1.0.1", "v1.0.3"))
 
