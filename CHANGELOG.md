@@ -1,5 +1,10 @@
 # Changelog
 
+> This file tracks the **v0.x build-tools branch**, not the independently
+> versioned v1.x prebuilt runtime line. For the latest runtime release
+> see [v1.0.3](https://github.com/Zaknin/Creality-K1C-ethernet-driver/releases/tag/v1.0.3)
+> and its [release history](https://github.com/Zaknin/Creality-K1C-ethernet-driver/blob/release/v1.0.3-rc1/docs/RELEASE-HISTORY.md).
+
 ## 0.1.1 - 2026-06-23
 
 - Rewrote the documentation as a practical step-by-step guide.
