@@ -1,5 +1,10 @@
 # Build Guide
 
+> **Scope:** This document describes the legacy **v0.1.1 local build-tools**
+> workflow in the `main` branch, **not** the prebuilt v1.0.3 release.
+> Installation directories, startup scripts and runtime policies differ.
+> For the current prebuilt release use the [current v1.0.3 runtime guide](LATEST-RUNTIME.md).
+>
 This guide covers the build-machine side. Run these commands on Linux or WSL, not on the printer.
 
 ## 1. What This Step Does
@@ -84,7 +89,7 @@ Common messages:
 - `KERNEL_DIR does not exist`: fix the kernel path.
 - `cross compiler target is not visibly MIPS`: fix `CROSS_COMPILE`.
 - `prepared kernel marker missing`: the kernel tree is not prepared.
-- `Module.symvers missing`: prepare the tree with the vendor build process before using this repository.
+- `Module.symvers missing`: if the target kernel has `CONFIG_MODVERSIONS=y`, obtain the matching symbol versions from the vendor build. The qualified v1.0.3 kernel has this disabled; consult its separate source-build guide.
 
 ## 6. Inspect The Kernel Tree
 
