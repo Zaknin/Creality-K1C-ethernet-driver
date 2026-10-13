@@ -1,48 +1,44 @@
-# Creality K1C USB Ethernet Driver v1.0.2
+# Creality K1C USB Ethernet v1.0.3 — Release Candidate
 
-This release has two separate workflows.
+**Not published as a GitHub Release.** This branch stages the
+dual-toggle receive filter validated on a physical 2023 K1C running
+Linux 4.4.94, while preserving the v1.0.2 installation/runtime
+script behavior.
 
-1. **Install the prebuilt driver**
-   Use the runtime archive. It already contains the compiled `mii.ko`,
-   `usbnet.ko`, and `cdc_ncm.ko` modules. You do not need an SDK, compiler,
-   kernel source tree, or build tools. Start with
-   [docs/INSTALL-PREBUILT.md](docs/INSTALL-PREBUILT.md).
+## New `cdc_ncm` parameters
 
-2. **Compile the driver from source**
-   Use the source archive. You need a compatible prepared K1C vendor kernel
-   tree, generated headers, and a compatible MIPS toolchain. A top-level
-   kernel `Module.symvers` is required only when the target kernel enables
-   `CONFIG_MODVERSIONS`; the qualified K1C config has it disabled, so Kbuild
-   generates the module-local `Module.symvers` during the external module
-   build. Use the source archive and its `docs/BUILD-FROM-SOURCE.md` guide.
+- `drop_l2_8899=Y` (default): filter only EtherType 0x8899.
+- `rx_ipv4_only=N` (default): optional strict IPv4/ARP/802.3/VLAN
+  allowlist, dropping other Ethernet-II protocols.
 
-## Supported Hardware
+Both parameters can be modified at runtime via
+`/sys/module/cdc_ncm/parameters/`. Changes **reset to defaults**
+after reloading the module or rebooting.
 
-This project has been physically tested only on a 2023-generation Creality K1C
-running kernel `4.4.94` with module ABI/vermagic
-`4.4.94 SMP preempt mod_unload MIPS32_R2 32BIT`.
+See [filter mode guide](docs/FILTER-MODES-v1.0.3.md) and
+[hardware report](docs/HARDWARE-VALIDATION-2026-10-13.md).
 
-The tested USB Ethernet adapter is ASIX USB ID `0b95:1790`.
+## Important packaging rule
 
-The 2025 K1C revision has not been tested. Compatibility with the 2025 revision
-is unknown and is not claimed.
+**The `package/modules/cdc_ncm.ko` tracked in this source branch is
+still the original v1.0.2 binary. Do not publish or install this branch
+as a runtime archive by simply repacking its tracked files.**
 
-See [docs/SUPPORTED-HARDWARE.md](docs/SUPPORTED-HARDWARE.md) before installing.
+The release-asset assembler
+[`tools/assemble-v1.0.3.py`](tools/assemble-v1.0.3.py)
+explicitly replaces that file in staging with the physical-hardware
+tested `cdc_ncm.ko` (SHA-256
+`f12a6cc8faf904a72cb44e21e6ec520efe24b37ae9999a40a1ca0183517d7271`),
+verifies the untouched `mii.ko` and `usbnet.ko`, regenerates
+checksums and metadata, and emits new v1.0.3 candidate assets.
+It does not modify the checked-out files, create tags, or publish.
 
-## Runtime Installation Requirements
+Final production release should be published **only after** archive
+validation and the desired installation/reboot regression checks.
+The unrelated, unverified notification-spam patch is not included.
 
-- Root SSH access to the printer.
-- Wi-Fi left enabled during installation and testing.
-- The supported USB Ethernet adapter and Ethernet cable connected.
-- The `v1.0.2-runtime` archive and matching `SHA256SUMS`.
+## Scope
 
-Installing files does not automatically start Ethernet-primary mode. Start it
-explicitly after installation, or reboot after enabling boot integration.
-
-## Release State
-
-`v1.0.2` is a boot DHCP acquisition patch for the documented 2023-generation
-K1C target. It keeps the supported hardware scope and production module
-binaries unchanged from the physically tested v1.0.1 runtime candidate.
-
-See [docs/RELEASE-HISTORY.md](docs/RELEASE-HISTORY.md) for upgrade guidance.
+Supported/physically tested: 2023-generation Creality K1C,
+ASIX USB ID 0b95:1790, Linux 4.4.94, MIPS32_R2.
+Compatibility with 2025-generation K1C is not claimed.
