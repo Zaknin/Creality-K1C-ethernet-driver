@@ -9,7 +9,7 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 loaded() { grep -q "^$1 " /proc/modules; }
 preflight() {
   [ "$(uname -r)" = 4.4.94 ] || die "kernel is not 4.4.94"
-  [ -f "$P/.package-owned" ] || die "v1.0.2 package missing"
+  grep -qx "version=1.0.2" "$P/package-manifest.txt" || die "v1.0.2 package missing"
   [ -f /etc/init.d/S46usb_ethernet_primary ] || die "boot hook missing"
   grep -Fq "PACKAGE_DIR=$P" /etc/init.d/S46usb_ethernet_primary || die "unexpected boot hook"
   (cd "$P" && sha256sum -c module-hashes.sha256) || die "stock module hash mismatch"
