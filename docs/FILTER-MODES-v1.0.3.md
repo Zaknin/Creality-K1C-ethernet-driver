@@ -53,8 +53,10 @@ already-qualified boot and DHCP scripts.
 
 Strict mode can suppress **IPv6**, LLDP, EAPOL/802.1X,
 PPPoE, PTP and other Ethernet-II protocols. The 802.3-length
-and VLAN exceptions are deliberately passed through to Linux,
-so the allowlist does **not** guarantee zero drops in every network.
+and outer VLAN tag exceptions are deliberately passed through to Linux
+**without inspecting encapsulated inner protocols**: VLAN-tagged IPv6
+may therefore still be delivered to the Linux network stack. The
+allowlist does **not** guarantee zero drops in every network.
 Keep strict mode off on networks that depend on such protocols.
 
 ## Evidence and limitations
@@ -86,5 +88,11 @@ MIPS32_R2 tested. The 2025 K1C is not qualified.
 Do not install on a mismatched kernel, and do not overwrite the
 known-good installation without a separate upgrade/recovery plan.
 
-**Issue #1 CDC-NCM notification-spam changes are not included**
-in the tested dual-filter module or this release candidate.
+**[Issue #1 CDC-NCM notification-spam changes](https://github.com/Zaknin/Creality-K1C-ethernet-driver/issues/1) are not included**
+in the v1.0.3 binary. The RX filtering and notification-spam symptoms
+must be evaluated separately, especially on an AX88179B adapter.
+
+The documented RX results are from one lab network with EtherType
+0x8899 broadcasts; the original reporter's network is not known to
+have the same EtherType. The filter does not correct malformed NTBs,
+actual `rx_errors`, or repeated connection/speed log messages.
