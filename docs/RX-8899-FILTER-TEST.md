@@ -91,3 +91,53 @@ For hardware verification, compare 30s intervals with
 read `/sys/class/net/usb0/statistics/rx_dropped`,
 `rx_errors`, and link state after each.
 No change to normal connectivity is expected, but must be tested.
+
+## Physical K1C results (2026-10-13)
+
+**Status: candidate RX behavior validated on one real K1C; not yet
+qualified for a stable release.**
+
+Ubuntu `whisper-vulkan` built the branch using the prepared X2000
+Linux 4.4.94 SDK; native RX regression passed and module verification
+passed. Built `cdc_ncm.ko` SHA-256:
+
+```text
+1733b1f47fb90624b2253bcfd2cad96db7398397bdac1ded5692b23b0492c3d2
+```
+
+It loaded on the physical 2023 K1C with module size 17255
+(original: 17148); `drop_l2_8899=Y`; Ethernet acquired
+`192.0.2.12` with primary default route metric 50.
+
+A/B test on the **same loaded module**, toggling only the runtime
+parameter, each interval 25 seconds:
+
+| Interval | Filter | RX packets delta | rx_dropped delta | rx_errors delta |
+|---|---|---:|---:|---:|
+| A1 | ON | 490 | **0** | 0 |
+| B1 | OFF | 411 | **12** | 0 |
+| A2 | ON | 415 | **1** | 0 |
+| B2 | OFF | 488 | **32** | 0 |
+
+Combined: **1 drop ON vs 44 drops OFF**, for equal total observation
+time of 50 seconds each. These are descriptive results, not a
+throughput or packet-loss benchmark.
+
+A subsequent `ping -I usb0 -c 10 -W 2 192.0.2.14` passed
+10/10 (0% ICMP packet loss), RTT min/avg/max
+2.130/2.213/2.376 ms. The filter remained enabled (`Y`) and
+link state was `UP,LOWER_UP` after the test. At this later
+snapshot, absolute `rx_errors` was **1**, although each of the
+four measured intervals had `+0` RX errors. The timing/cause of
+the single error is unknown; check for continued growth before
+calling it harmless.
+
+The previous eight-minute watchdog run successfully rebooted the
+printer back to stock (original module size 17148; IPv4 routes
+restored). The second A/B run's scheduled reboot/rollback has
+**not yet been independently confirmed**.
+
+Next gate: verify the second watchdog rollback and monitor
+`rx_errors` over a further non-printing observation window.
+Neither the filter nor the separate notification patch is merged
+into the stable v1.0.2 release.
