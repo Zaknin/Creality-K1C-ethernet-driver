@@ -85,8 +85,8 @@ The separate build-tools and runtime histories were intentionally not merged.
 
 ## Licensing and disclaimer
 
-This is an independent community project, not affiliated with or
-endorsed by Creality. Original build-tools branch scripts are under the
+This is an independent, unofficial community project with no
+vendor affiliation. Original build-tools branch scripts are under the
 [MIT License](LICENSE); distributed kernel-derived sources/modules
 retain their own applicable licenses. See the `COPYING` and `LICENSE.md`
 files in the runtime release, and this build-tools branch's
