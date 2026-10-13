@@ -12,6 +12,6 @@ jobs:
   native-callbacks:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Compile and exercise actual CDC-NCM status callbacks
         run: python3 tests/test_cdc_ncm_notifications.py
