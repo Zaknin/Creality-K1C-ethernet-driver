@@ -4,7 +4,7 @@ ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 README=$ROOT/README.md
 
 first_line=$(sed -n '1p' "$README")
-[ "$first_line" = "# Creality K1C Ethernet Driver" ] || {
+[ "$first_line" = "# Creality K1C USB Ethernet Driver" ] || {
   echo "README title mismatch: $first_line"
   exit 1
 }
@@ -23,9 +23,14 @@ import sys
 
 readme = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
 required = [
-    "This repository does not include ready-to-install kernel modules. You must build `mii.ko`, `usbnet.ko`, and `cdc_ncm.ko` from a compatible Creality K1C kernel source tree before you can install Ethernet support.",
-    "This is an unofficial community project and is not affiliated with,\n"
-    "endorsed by, or supported by Creality.",
+    "## Latest ready-to-install release: v1.0.3",
+    "releases/tag/v1.0.3",
+    "This branch is the older v0.1.1",
+    "docs/LATEST-RUNTIME.md",
+    "drop_l2_8899",
+    "rx_ipv4_only",
+    "The 2025 K1C revision",
+    "unofficial community project",
 ]
 for text in required:
     if text not in readme:
