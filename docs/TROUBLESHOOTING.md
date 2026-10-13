@@ -1,5 +1,10 @@
 # Troubleshooting
 
+> **Scope:** This document describes the legacy **v0.1.1 local build-tools**
+> workflow in the `main` branch, **not** the prebuilt v1.0.3 release.
+> Installation directories, startup scripts and runtime policies differ.
+> For the current prebuilt release use the [current v1.0.3 runtime guide](LATEST-RUNTIME.md).
+>
 These commands assume you are in the repository root on the Linux or WSL build machine unless the command uses `ssh "$PRINTER_HOST"`.
 
 ## `check-environment.sh` Fails
@@ -17,7 +22,7 @@ Common fixes:
 - Set `KERNEL_RELEASE=4.4.94`.
 - Fix `KERNEL_DIR`.
 - Fix `CROSS_COMPILE`.
-- Prepare the kernel tree so it has `include/generated/utsrelease.h`, `include/generated/autoconf.h`, and `Module.symvers`.
+- Prepare the kernel tree so it has `include/generated/utsrelease.h` and `include/generated/autoconf.h`. A top-level `Module.symvers` is required only where matching kernel symbol versioning requires it (`CONFIG_MODVERSIONS=y`).
 
 ## Kernel Tree Is `UNCONFIRMED`
 
