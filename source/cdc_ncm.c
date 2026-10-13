@@ -740,6 +740,14 @@ int cdc_ncm_bind_common(struct usbnet *dev, struct usb_interface *intf, u8 data_
 
 	/* store ctx pointer in device data field */
 	dev->data[0] = (unsigned long)ctx;
+	/*
+	 * CDC-NCM notification cache. The vendor usbnet ABI has no speed
+	 * fields; data[1..3] are unused by this standalone driver.
+	 * [1] rx bps, [2] tx bps, [3] speed notification seen.
+	 */
+	dev->data[1] = 0;
+	dev->data[2] = 0;
+	dev->data[3] = 0;
 
 	/* only the control interface can be successfully probed */
 	ctx->control = intf;
@@ -1475,6 +1483,16 @@ cdc_ncm_speed_change(struct usbnet *dev,
 	uint32_t rx_speed = le32_to_cpu(data->DLBitRRate);
 	uint32_t tx_speed = le32_to_cpu(data->ULBitRate);
 
+	/* Some USB NICs report identical speeds several times per second. */
+	if (dev->data[3] &&
+	    dev->data[1] == (unsigned long)rx_speed &&
+	    dev->data[2] == (unsigned long)tx_speed)
+		return;
+
+	dev->data[1] = (unsigned long)rx_speed;
+	dev->data[2] = (unsigned long)tx_speed;
+	dev->data[3] = 1;
+
 	/*
 	 * Currently the USB-NET API does not support reporting the actual
 	 * device speed. Do print it instead.
@@ -1518,10 +1536,16 @@ static void cdc_ncm_status(struct usbnet *dev, struct urb *urb)
 		 * USB_CDC_NOTIFY_NETWORK_CONNECTION notification shall be
 		 * sent by device after USB_CDC_NOTIFY_SPEED_CHANGE.
 		 */
-		netif_info(dev, link, dev->net,
-			   "network connection: %sconnected\n",
-			   !!event->wValue ? "" : "dis");
-		usbnet_link_change(dev, !!event->wValue, 0);
+		/* Do not log or schedule a link event when carrier is unchanged. */
+		if (netif_carrier_ok(dev->net) != !!event->wValue) {
+			netif_info(dev, link, dev->net,
+				   "network connection: %sconnected\n",
+				   !!event->wValue ? "" : "dis");
+			/* Log the negotiated speed again after a real disconnect. */
+			if (!event->wValue)
+				dev->data[3] = 0;
+			usbnet_link_change(dev, !!event->wValue, 0);
+		}
 		break;
 
 	case USB_CDC_NOTIFY_SPEED_CHANGE:
