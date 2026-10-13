@@ -123,8 +123,12 @@ int main(void)
     run_case(0x0806, 0x0800, true, 2);   /* ARP and IPv4 unaffected */
     run_case(0x8899, 0x8899, true, 0);   /* All filtered NTB valid */
     rx_ipv4_only = true;
+    assert(!cdc_ncm_should_drop_other_l2(tiny, 13)); /* Bounds check */
+    assert(cdc_ncm_should_drop_other_l2(tiny, 14)); /* Strict drops 8899 */
     run_case(0x86dd, 0x0800, false, 1);  /* Strict: IPv6 rejected */
     run_case(0x88cc, 0x0806, false, 1);  /* Strict: LLDP rejected */
+    run_case(0x888e, 0x0800, false, 1);  /* Strict: EAPOL rejected */
+    run_case(0x8898, 0x0800, false, 1);  /* Strict: unknown EtherType rejected */
     run_case(0x8899, 0x0800, false, 1);  /* Strict: 0x8899 rejected */
     run_case(0x8100, 0x0800, false, 2);  /* VLAN 802.1Q retained */
     run_case(0x88a8, 0x0800, false, 2);  /* VLAN 802.1ad retained */
