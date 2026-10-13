@@ -1,5 +1,10 @@
 # Getting the kernel source
 
+> **Scope:** This document describes the legacy **v0.1.1 local build-tools**
+> workflow in the `main` branch, **not** the prebuilt v1.0.3 release.
+> Installation directories, startup scripts and runtime policies differ.
+> For the current prebuilt release use the [current v1.0.3 runtime guide](LATEST-RUNTIME.md).
+>
 You need a kernel source tree that matches the printer closely enough to build loadable modules. Ordinary upstream Linux `4.4.94` may not match the K1C. Vendor patches, kernel configuration, exported symbols, compiler ABI, and endianness can all affect whether a module loads.
 
 This repository does not include a kernel source archive, SDK, compiler, sysroot, firmware, or prebuilt `.ko` files.
@@ -113,10 +118,10 @@ The current scripts also expect or check for generated build markers:
 ```text
 include/generated/utsrelease.h
 include/generated/autoconf.h
-Module.symvers
+# Module.symvers is also needed when CONFIG_MODVERSIONS=y
 ```
 
-These generated files are normally produced while configuring, preparing, or building the kernel. They must match the target printer ABI closely enough for loadable modules. Merely extracting the source archive may not produce a ready-to-build tree.
+The generated headers are normally produced while configuring, preparing, or building the kernel. A matching top-level `Module.symvers` is required if `CONFIG_MODVERSIONS=y`; for the qualified v1.0.3 K1C kernel configuration, `CONFIG_MODVERSIONS` is disabled and the top-level file was not required. They must match the target printer ABI closely enough for loadable modules. Merely extracting the source archive may not produce a ready-to-build tree.
 
 `scripts/prepare-kernel.sh` does not download or prepare a kernel tree. It prints a guard message and exits because this repository cannot safely recreate unknown Creality or Ingenic build state.
 
