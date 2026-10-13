@@ -1,5 +1,10 @@
 # Install On The Printer
 
+> **Scope:** This document describes the legacy **v0.1.1 local build-tools**
+> workflow in the `main` branch, **not** the prebuilt v1.0.3 release.
+> Installation directories, startup scripts and runtime policies differ.
+> For the current prebuilt release use the [current v1.0.3 runtime guide](LATEST-RUNTIME.md).
+>
 Run the host-side commands in this guide on the Linux or WSL build machine. Commands beginning with `ssh "$PRINTER_HOST"` run on the printer.
 
 ## 1. Keep Wi-Fi Connected
