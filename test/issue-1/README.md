@@ -38,9 +38,11 @@ mkdir -p "$T"
 cd "$T" || exit 1
 
 BASE=https://raw.githubusercontent.com/Zaknin/Creality-K1C-ethernet-driver/test/issue-1-candidate/test/issue-1
-wget -O cdc_ncm.ko "$BASE/cdc_ncm.ko"
+wget -O cdc_ncm.ko.gz "$BASE/cdc_ncm.ko.gz"
 wget -O run-test.sh "$BASE/run-test.sh"
 
+echo 'cae30e58e1a452c0d0f12e4c96815a5da0909ad9bca12a5161289fa821a95be3  cdc_ncm.ko.gz' | sha256sum -c -
+gzip -dc cdc_ncm.ko.gz > cdc_ncm.ko
 echo '5cb1573d71fd1c3df6878e544dade7ef52f132a46bbc8bd238ed124d56104d8c  cdc_ncm.ko' | sha256sum -c -
 sh run-test.sh preflight
 ```
