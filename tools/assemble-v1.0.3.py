@@ -171,6 +171,14 @@ def all_files(root):
 
 
 def unix_mode(path):
+    # Preserve the qualified v1.0.2 runtime modes for package files.
+    # The boot hook has no .sh suffix; two sourced/monitored scripts
+    # were deliberately non-executable in the original Git tree.
+    if "package" in path.parts:
+        if path.name == "S46usb_ethernet_primary":
+            return 0o755
+        if path.name in ("primary-routing-lib.sh", "usb0-route-monitor.sh"):
+            return 0o644
     suffix = path.suffix
     if suffix in (".sh", ".py") or path.name == "install.sh":
         return 0o755
