@@ -1,0 +1,17 @@
+name: CDC-NCM notification regression
+on:
+  push:
+    branches:
+      - fix/issue-1-cdc-ncm-notification-spam
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-callbacks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and exercise actual CDC-NCM status callbacks
+        run: python3 tests/test_cdc_ncm_notifications.py
