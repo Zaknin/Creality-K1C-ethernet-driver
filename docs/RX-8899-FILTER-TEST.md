@@ -1,7 +1,15 @@
-# RX drops from EtherType 0x8899 — experimental filter
+# RX drops from EtherType 0x8899 — historical development notes
 
-Scope: CDC-NCM receive path only. Based on v1.0.2; this is **not**
-the notification-spam patch and **not** a stable release.
+**Historical note:** this records the original 0x8899-only experimental
+branch. The filtered receive behavior was subsequently incorporated into
+the released [v1.0.3](https://github.com/Zaknin/Creality-K1C-ethernet-driver/releases/tag/v1.0.3), with a second optional strict policy and a separate
+completed hardware A/B/C trial. See
+[latest filter controls](FILTER-MODES-v1.0.3.md) and
+[validation results](HARDWARE-VALIDATION-2026-10-13.md).
+The notification-spam patch remains separate and is **not** in v1.0.3.
+
+Scope of the test below: CDC-NCM receive path only. Based on v1.0.2;
+these are historical experimental test instructions.
 
 ## Evidence from 2023 K1C
 
