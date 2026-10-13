@@ -1385,6 +1385,22 @@ error:
 }
 EXPORT_SYMBOL_GPL(cdc_ncm_rx_verify_ndp16);
 
+/*
+ * Switch management frames using EtherType 0x8899 have no consumer on K1C.
+ * Suppress them before handing the frame to the network stack, where
+ * unhandled protocols would otherwise increase rx_dropped.
+ */
+static bool drop_l2_8899 = true;
+module_param(drop_l2_8899, bool, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(drop_l2_8899,
+                 "Discard EtherType 0x8899 frames on RX (default: on)");
+
+static bool cdc_ncm_should_drop_8899(const u8 *frame, unsigned int len)
+{
+	return drop_l2_8899 && len >= ETH_HLEN &&
+	       frame[12] == 0x88 && frame[13] == 0x99;
+}
+
 int cdc_ncm_rx_fixup(struct usbnet *dev, struct sk_buff *skb_in)
 {
 	struct sk_buff *skb;
@@ -1443,6 +1459,14 @@ next_ndp:
 			break;
 
 		} else {
+			/*
+			 * This is a valid datagram, even when ignored. Include
+			 * its bytes in NTB payload accounting, not rx_overhead.
+			 */
+			if (cdc_ncm_should_drop_8899(skb_in->data + offset, len)) {
+				payload += len;
+				continue;
+			}
 			/* create a fresh copy to reduce truesize */
 			skb = netdev_alloc_skb_ip_align(dev->net,  len);
 			if (!skb)
