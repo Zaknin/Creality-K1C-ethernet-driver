@@ -1,47 +1,63 @@
-# Install the Prebuilt Driver
+# Install the Prebuilt K1C USB Ethernet v1.0.3
 
-Use this guide with `k1c-usb-ethernet-v1.0.3-runtime.tar.gz` or
-`k1c-usb-ethernet-v1.0.3-runtime.zip`.
+Download the [official v1.0.3 release](https://github.com/Zaknin/Creality-K1C-ethernet-driver/releases/tag/v1.0.3).
+This guide is for a **2023-generation Creality K1C**, Linux `4.4.94`,
+with compatible ASIX USB adapter `0b95:1790`.
 
-The runtime archive already contains compiled `.ko` modules. You do not need an
-SDK, compiler, kernel source tree, or build tools.
+The runtime archive already contains the required MIPS kernel modules:
+`mii.ko`, `usbnet.ko` and `cdc_ncm.ko`. No SDK is needed for installation.
+The 2025-generation K1C and other kernel ABIs are not qualified.
 
-Keep **Wi-Fi SSH connected** until Ethernet and fallback recovery are verified. Do not perform the upgrade over USB Ethernet SSH: stopping the old package can disconnect that session.
+**Keep Wi-Fi SSH accessible for the whole upgrade.** If you are currently
+connected over USB Ethernet SSH, reconnect via Wi-Fi before stopping
+the old runtime. Keep the original v1.0.2 archive for recovery.
 
-For the current full procedure, including an upgrade from v1.0.2, see the [latest runtime guide](https://github.com/Zaknin/Creality-K1C-ethernet-driver/blob/main/docs/LATEST-RUNTIME.md).
+## 1. Download and check the archive (Linux/WSL computer)
 
-## 1. Download and Verify
-
-Download one runtime archive and `SHA256SUMS` from the release page.
-
-Verify from your computer:
-
-```sh
-grep '  k1c-usb-ethernet-v1.0.3-runtime.tar.gz
-
-## 2. Copy to the Printer
-
-Replace `PRINTER_IP` with the current Wi-Fi address:
+Download `k1c-usb-ethernet-v1.0.3-runtime.tar.gz` and `SHA256SUMS`
+to the same directory. Check only the downloaded TAR:
 
 ```sh
-scp k1c-usb-ethernet-v1.0.3-runtime.tar.gz root@PRINTER_IP:/tmp/
+grep '  k1c-usb-ethernet-v1.0.3-runtime.tar.gz$' SHA256SUMS | sha256sum -c -
 ```
 
-## 3. Extract on the Printer
+Expected: `k1c-usb-ethernet-v1.0.3-runtime.tar.gz: OK`.
+If downloading the ZIP instead, check its matching line in
+`SHA256SUMS` before extracting.
+
+## 2. Transfer and extract (printer's Wi-Fi IP)
+
+From the Linux/WSL computer:
 
 ```sh
-ssh root@PRINTER_IP
+scp k1c-usb-ethernet-v1.0.3-runtime.tar.gz root@PRINTER_WIFI_IP:/tmp/
+ssh root@PRINTER_WIFI_IP
+```
+
+Continue the commands below in the **printer's root shell**:
+
+```sh
 cd /tmp
 tar -xzf k1c-usb-ethernet-v1.0.3-runtime.tar.gz
+cd /tmp/k1c-usb-ethernet-v1.0.3-runtime/package
+sha256sum -c module-hashes.sha256
+sha256sum -c SHA256SUMS
 ```
 
-For ZIP users, extract the ZIP with the available unzip tool on your host or on
-the printer, then copy the extracted directory to `/tmp`.
+All checks must report `OK`.
 
-## 4. Upgrade from an Existing v1.0.1/v1.0.2 Runtime
+## 3. Upgrading an existing v1.0.1/v1.0.2 runtime
 
-If the prebuilt v1.0.1 or v1.0.2 runtime is already installed,
-**first stop and uninstall it over Wi-Fi SSH**:
+**Skip for a fresh installation.**
+
+The current prebuilt runtime lives in:
+
+```text
+/usr/data/k1c-usb-ethernet/vendor-native-known-good
+```
+
+The v1.0.3 installer intentionally refuses to overwrite an
+existing package-owned runtime. Over **Wi-Fi SSH**:
 
 ```sh
 P=/usr/data/k1c-usb-ethernet/vendor-native-known-good
@@ -49,235 +65,88 @@ P=/usr/data/k1c-usb-ethernet/vendor-native-known-good
 "$P/uninstall-usb-ethernet.sh" --yes
 ```
 
-The uninstall removes the package directory (including state/logs)
-and owned boot hook. Save any logs and keep a verified copy of
-v1.0.2 before upgrading. The installer deliberately refuses to
-overwrite an existing package-owned installation; there is no
-in-place hot swap of the loaded modules.
+The uninstall also disables the owned boot hook
+`/etc/init.d/S46usb_ethernet_primary` and deletes the old
+package directory, including logs and state. Save any diagnostic
+information beforehand. Do not apply these commands to the older
+build-tools installation in `/usr/data/k1c-usb-ethernet-local`.
 
-Skip this step for a fresh install. Do not apply these commands to
-the separate legacy `k1c-usb-ethernet-local` build-tools package.
+## 4. Install and start v1.0.3
 
-## 5. Install Files
-
-From the extracted directory:
+In the **printer root shell**:
 
 ```sh
-cd /tmp/k1c-usb-ethernet-v1.0.3-runtime
-sh ./install.sh --enable-boot
-```
-
-The installer can also be invoked by absolute path:
-
-```sh
-cd /tmp
 sh /tmp/k1c-usb-ethernet-v1.0.3-runtime/install.sh --enable-boot
 ```
 
-`--enable-boot` installs the boot hook so Ethernet-primary mode starts after a
-reboot. It does not start Ethernet-primary mode immediately.
-
-If the installer reports an existing package-owned installation, complete the prior stop/uninstall step before retrying. Keep Wi-Fi enabled throughout.
-
-## 6. Start Immediately
-
-To start without rebooting:
+The installer copies files and enables automatic boot integration,
+but does not immediately start Ethernet-primary mode. Start it:
 
 ```sh
-/usr/data/k1c-usb-ethernet/vendor-native-known-good/start-primary-ethernet.sh
+P=/usr/data/k1c-usb-ethernet/vendor-native-known-good
+"$P/start-primary-ethernet.sh"
+"$P/ethernet-failover-status.sh"
 ```
 
-This is separate from installation. It loads the modules, brings `usb0` up,
-runs DHCP, starts route monitoring, prefers USB Ethernet with metric `50`, and
-keeps Wi-Fi as fallback with metric `300`.
+When both interfaces are healthy, the USB default route normally
+uses metric `50`, with Wi-Fi backup metric `300`.
 
-As an alternative, reboot after installing with `--enable-boot`.
-
-## 7. Check Status
+## 5. Check functionality and the two filters
 
 ```sh
-/usr/data/k1c-usb-ethernet/vendor-native-known-good/ethernet-failover-status.sh
-```
-
-Check for:
-
-- `usb0` exists.
-- `usb0` has an IPv4 address.
-- USB default route metric is `50`.
-- Wi-Fi fallback route metric is `300`.
-- Gateway lookup from the USB address uses `usb0`.
-- Wi-Fi SSH remains available.
-
-Useful manual checks:
-
-```sh
-ip addr show usb0
-ip addr show wlan0
-ip route
-ip route get 8.8.8.8
-```
-
-If `ethernet-failover-status.sh` shows `usb0.router` and `usb0.ip`, check:
-
-```sh
-ip route get "$(cat /usr/data/k1c-usb-ethernet/vendor-native-known-good/state/usb0.router)" \
-  from "$(cat /usr/data/k1c-usb-ethernet/vendor-native-known-good/state/usb0.ip)"
-```
-
-## 8. Verify the New Receive Filtering Controls
-
-With the new module loaded:
-
-```sh
+ip -4 addr show usb0
+ip -4 route
 cat /sys/module/cdc_ncm/parameters/drop_l2_8899
 cat /sys/module/cdc_ncm/parameters/rx_ipv4_only
 ```
 
-Expected defaults: `Y` and `N`, respectively. These settings are
-writable at runtime but reset after a module reload/reboot.
-Read [FILTER-MODES-v1.0.3.md](FILTER-MODES-v1.0.3.md) before trying
-the strict IPv4-only policy; it can discard important Ethernet protocols.
+Expected parameter defaults: `Y` and `N`. Check access to your
+actual LAN gateway with `ping -I usb0 -c 10 -W 2 GATEWAY_IP`.
+Also check SSH, normal printing and Ethernet/Wi-Fi fallback,
+including after reboot.
 
-**Important:** these RX filters are separate from the still-unfixed
-duplicate `cdc_ncm` connection/speed notification issue (#1).
+- `drop_l2_8899=Y`: ignore EtherType 0x8899 frames.
+- `rx_ipv4_only=N`: strict L2 filtering disabled by default.
 
-## 9. Stop, Disable, or Uninstall
+The optional strict mode can suppress IPv6, EAPOL/802.1X,
+LLDP and PPPoE. Do not enable without checking network requirements.
+See [filter modes](FILTER-MODES-v1.0.3.md). Runtime sysfs changes
+are **not persistent** across reload/reboot.
 
-Stop Ethernet-primary mode:
+The v1.0.3 receive filters are **not** a fix for the repeated
+CDC-NCM connection/speed notification issue
+([Issue #1](https://github.com/Zaknin/Creality-K1C-ethernet-driver/issues/1)).
 
-```sh
-/usr/data/k1c-usb-ethernet/vendor-native-known-good/stop-primary-ethernet.sh
-```
+## 6. Stop, uninstall or recover
 
-Disable boot integration:
-
-```sh
-/usr/data/k1c-usb-ethernet/vendor-native-known-good/disable-primary-ethernet-boot.sh
-```
-
-Uninstall:
+Stop Ethernet-primary:
 
 ```sh
-/usr/data/k1c-usb-ethernet/vendor-native-known-good/uninstall-usb-ethernet.sh --yes
+P=/usr/data/k1c-usb-ethernet/vendor-native-known-good
+"$P/stop-primary-ethernet.sh"
 ```
 
-## 10. Wi-Fi Recovery
-
-If USB Ethernet fails, reconnect over Wi-Fi SSH, disable boot, and uninstall the new runtime if required. You can then reinstall a saved verified v1.0.2 runtime. The v1.0.3 module has passed focused hardware A/B/C filtering tests, but a complete packaged installer-upgrade/reboot qualification remains outstanding. Do not disable Wi-Fi before confirming both normal operation and recovery.
- SHA256SUMS | sha256sum -c -
-```
-
-This verifies just the TAR if you downloaded the TAR and `SHA256SUMS`, not every other archive listed in the manifest. ZIP users can similarly select the ZIP entry. Only continue when the selected archive reports `OK`.
-
-## 2. Copy to the Printer
-
-Replace `PRINTER_IP` with the current Wi-Fi address:
+Disable boot integration (also stops the package):
 
 ```sh
-scp k1c-usb-ethernet-v1.0.3-runtime.tar.gz root@PRINTER_IP:/tmp/
+"$P/disable-primary-ethernet-boot.sh"
 ```
 
-## 3. Extract on the Printer
+Uninstall this package (requires its `.package-owned` marker):
 
 ```sh
-ssh root@PRINTER_IP
-cd /tmp
-tar -xzf k1c-usb-ethernet-v1.0.3-runtime.tar.gz
+"$P/uninstall-usb-ethernet.sh" --yes
 ```
 
-For ZIP users, extract the ZIP with the available unzip tool on your host or on
-the printer, then copy the extracted directory to `/tmp`.
+If needed, reinstall your verified saved v1.0.2 runtime using its
+own install instructions. Never overwrite a currently loaded `.ko`
+in place. If no network access remains, physical recovery may be
+necessary.
 
-## 4. Install Files
+See [troubleshooting](TROUBLESHOOTING.md) and the
+[latest upgrade guide](https://github.com/Zaknin/Creality-K1C-ethernet-driver/blob/main/docs/LATEST-RUNTIME.md).
 
-From the extracted directory:
-
-```sh
-cd /tmp/k1c-usb-ethernet-v1.0.3-runtime
-sh ./install.sh --enable-boot
-```
-
-The installer can also be invoked by absolute path:
-
-```sh
-cd /tmp
-sh /tmp/k1c-usb-ethernet-v1.0.3-runtime/install.sh --enable-boot
-```
-
-`--enable-boot` installs the boot hook so Ethernet-primary mode starts after a
-reboot. It does not start Ethernet-primary mode immediately.
-
-The installer refuses an existing package-owned installation. For upgrade from
-v1.0.1, keep Wi-Fi connected, stop Ethernet-primary mode, uninstall v1.0.1, and
-then install v1.0.3.
-
-## 5. Start Immediately
-
-To start without rebooting:
-
-```sh
-/usr/data/k1c-usb-ethernet/vendor-native-known-good/start-primary-ethernet.sh
-```
-
-This is separate from installation. It loads the modules, brings `usb0` up,
-runs DHCP, starts route monitoring, prefers USB Ethernet with metric `50`, and
-keeps Wi-Fi as fallback with metric `300`.
-
-As an alternative, reboot after installing with `--enable-boot`.
-
-## 6. Check Status
-
-```sh
-/usr/data/k1c-usb-ethernet/vendor-native-known-good/ethernet-failover-status.sh
-```
-
-Check for:
-
-- `usb0` exists.
-- `usb0` has an IPv4 address.
-- USB default route metric is `50`.
-- Wi-Fi fallback route metric is `300`.
-- Gateway lookup from the USB address uses `usb0`.
-- Wi-Fi SSH remains available.
-
-Useful manual checks:
-
-```sh
-ip addr show usb0
-ip addr show wlan0
-ip route
-ip route get 8.8.8.8
-```
-
-If `ethernet-failover-status.sh` shows `usb0.router` and `usb0.ip`, check:
-
-```sh
-ip route get "$(cat /usr/data/k1c-usb-ethernet/vendor-native-known-good/state/usb0.router)" \
-  from "$(cat /usr/data/k1c-usb-ethernet/vendor-native-known-good/state/usb0.ip)"
-```
-
-## 7. Stop, Disable, or Uninstall
-
-Stop Ethernet-primary mode:
-
-```sh
-/usr/data/k1c-usb-ethernet/vendor-native-known-good/stop-primary-ethernet.sh
-```
-
-Disable boot integration:
-
-```sh
-/usr/data/k1c-usb-ethernet/vendor-native-known-good/disable-primary-ethernet-boot.sh
-```
-
-Uninstall:
-
-```sh
-/usr/data/k1c-usb-ethernet/vendor-native-known-good/uninstall-usb-ethernet.sh --yes
-```
-
-## 8. Wi-Fi Recovery
-
-If USB Ethernet fails, reconnect over Wi-Fi SSH and run the stop or uninstall
-commands above. Do not disable Wi-Fi until the Ethernet path and recovery path
-are proven.
+**Qualification note:** the new CDC-NCM module was physically tested
+in A/B/C mode and successfully recovered by watchdog. Full v1.0.3
+package upgrade and subsequent reboot acceptance remains a separate
+qualification step.
