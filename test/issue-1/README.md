@@ -30,7 +30,7 @@ the reporter's AX88179B is needed to confirm the fix.
 
 ## Get the test files
 
-On the printer, logged in over **Wi-Fi SSH**:
+On the printer, logged in as **root over Wi-Fi SSH**:
 
 ```sh
 T=/usr/data/k1c-usb-ethernet/issue1-eval
@@ -47,8 +47,9 @@ echo '5cb1573d71fd1c3df6878e544dade7ef52f132a46bbc8bd238ed124d56104d8c  cdc_ncm.
 sh run-test.sh preflight
 ```
 
-Both checks must pass. If the printer cannot fetch HTTPS, download the
-two files on your computer and upload them over your existing SSH connection.
+All checks must pass. If the printer cannot fetch HTTPS, download the
+archive and script on your computer and upload them over your existing SSH connection.
+You'll still need to unpack the archive into `cdc_ncm.ko` and verify its SHA-256.
 Do **not** proceed if either download or hash verification fails.
 
 ## Compare stock and candidate
