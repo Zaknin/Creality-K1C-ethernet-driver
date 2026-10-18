@@ -7,7 +7,7 @@ import shutil
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "assets"
 EXTRACTED = ROOT / "verification/k1c-usb-ethernet-v1.0.3-runtime"
-OLD = "6ff51a9ec99089245d0cad267ac83d312193bb6818f8cec6519c1983cbe8f2bc"
+OLD = "f12a6cc8faf904a72cb44e21e6ec520efe24b37ae9999a40a1ca0183517d7271"
 NEW = "f12a6cc8faf904a72cb44e21e6ec520efe24b37ae9999a40a1ca0183517d7271"
 NAMES = [
     "k1c-usb-ethernet-v1.0.3-runtime.tar.gz",

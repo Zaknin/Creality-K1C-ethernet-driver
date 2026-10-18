@@ -96,7 +96,7 @@ def stage_runtime(work, candidate):
     edit_exact(root / "install.sh", "VERSION=1.0.2", "VERSION=1.0.3")
     edit_exact(pkg / "package-manifest.txt", "version=1.0.2", "version=1.0.3")
     edit_exact(pkg / "package-manifest.txt",
-               "module_cdc_ncm_sha256=6ff51a9ec99089245d0cad267ac83d312193bb6818f8cec6519c1983cbe8f2bc",
+               "module_cdc_ncm_sha256=f12a6cc8faf904a72cb44e21e6ec520efe24b37ae9999a40a1ca0183517d7271",
                "module_cdc_ncm_sha256=" + EXPECTED["cdc_ncm.ko"])
     edit_exact(pkg / "package-manifest.txt",
                "runtime_physical_qualification=PASS",
