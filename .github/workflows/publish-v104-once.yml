@@ -1,0 +1,119 @@
+name: Publish verified K1C USB Ethernet v1.0.4 once
+on:
+  push:
+    branches:
+      - release/v1.0.3-rc1
+    paths:
+      - .github/workflows/publish-v104-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-k1c-v1.0.4-once
+  cancel-in-progress: false
+
+jobs:
+  verified-publication:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reject duplicate publication
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/release/v1.0.3-rc1"
+          test "$(grep -c '^VERSION=1.0.4$' install.sh)" -eq 1
+          if gh release view v1.0.4 --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo 'STOP: v1.0.4 release already exists; no replacement allowed' >&2
+            exit 1
+          fi
+
+      - name: Check installer and kernel RX regression
+        run: |
+          set -euo pipefail
+          python3 tests/test_v104_installer_integrity.py
+          python3 tests/test_cdc_ncm_8899_filter.py
+
+      - name: Rebuild deterministic privacy-checked assets
+        env:
+          OUT: ${{ runner.temp }}/candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/assemble-v1.0.4.py --out "$OUT"
+          (cd "$OUT" && sha256sum -c SHA256SUMS)
+          python3 tests/test_v104_release_archives.py "$OUT"
+          python3 tools/assemble-v1.0.4.py --out "$RUNNER_TEMP/rebuilt"
+          cmp "$OUT/SHA256SUMS" "$RUNNER_TEMP/rebuilt/SHA256SUMS"
+
+      - name: Block private network identifiers in shipped text
+        env:
+          OUT: ${{ runner.temp }}/candidate
+        run: |
+          python3 - <<'PY'
+          import io, os, pathlib, re, tarfile, zipfile
+          root = pathlib.Path(os.environ["OUT"])
+          private_ip = re.compile(rb"(?<![0-9.])(?:10\.(?:[0-9]{1,3}\.){2}[0-9]{1,3}|192\.168\.(?:[0-9]{1,3}\.)[0-9]{1,3}|172\.(?:1[6-9]|2[0-9]|3[01])\.(?:[0-9]{1,3}\.)[0-9]{1,3})(?![0-9.])")
+          mac = re.compile(rb"(?i)\b(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\b")
+          def check(name, payload):
+              if private_ip.search(payload) or mac.search(payload):
+                  raise SystemExit("BLOCKED: private network identifier in release asset: " + name)
+          for suffix in ("runtime.tar.gz", "source.tar.gz"):
+              filename = root / ("k1c-usb-ethernet-v1.0.4-" + suffix)
+              with tarfile.open(filename, "r:gz") as archive:
+                  for member in archive:
+                      if member.isfile() and not member.name.endswith(".ko"):
+                          check(member.name, archive.extractfile(member).read())
+          with zipfile.ZipFile(root / "k1c-usb-ethernet-v1.0.4-runtime.zip") as archive:
+              for member in archive.infolist():
+                  if not member.is_dir() and not member.filename.endswith(".ko"):
+                      check(member.filename, archive.read(member))
+          print("PUBLIC RELEASE PRIVACY GATE: PASS")
+          PY
+
+      - name: Prepare release notes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, pathlib
+          p=pathlib.Path("docs/RELEASE-NOTES-v1.0.4.md")
+          data=p.read_text()
+          data=data.replace("(HARDWARE-ACCEPTANCE-v1.0.4.md)", "(https://github.com/{}/blob/{}/docs/HARDWARE-ACCEPTANCE-v1.0.4.md)".format(os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_SHA"]))
+          data=data.replace("## Assets (when released)", "## Release assets")
+          data=data.replace("These names are a release plan, not evidence of publication.", "Use the attached SHA256SUMS to verify each downloaded archive.")
+          data=data.replace("Final publication requires the same checks on the exact final commit and all four exact release assets.", "The publishing workflow repeats installer, RX regression, archive integrity, deterministic assembly and source privacy tests before release.")
+          pathlib.Path(os.environ["RUNNER_TEMP"],"v104-release-notes.md").write_text(data)
+          PY
+
+      - name: Publish new immutable release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OUT: ${{ runner.temp }}/candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create v1.0.4 \
+            "$OUT/k1c-usb-ethernet-v1.0.4-runtime.tar.gz" \
+            "$OUT/k1c-usb-ethernet-v1.0.4-runtime.zip" \
+            "$OUT/k1c-usb-ethernet-v1.0.4-source.tar.gz" \
+            "$OUT/SHA256SUMS" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Creality K1C USB Ethernet v1.0.4" \
+            --notes-file "$RUNNER_TEMP/v104-release-notes.md" \
+            --latest
+
+      - name: Verify published release and assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view v1.0.4 --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,isPrerelease,assets --jq '{tag: .tagName, draft: .isDraft, prerelease: .isPrerelease, names: ([.assets[].name] | sort)}'
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/v1.0.4" --jq '.draft == false and .prerelease == false and (.assets | length) == 4' | grep -qx true
+          echo 'RELEASE v1.0.4 VERIFIED — PASS'
