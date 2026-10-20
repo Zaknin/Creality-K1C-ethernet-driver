@@ -20,7 +20,7 @@ PARAM_DIR = Path("/sys/module/cdc_ncm/parameters")
 STATS = Path("/sys/class/net/usb0/statistics")
 FILTER = PARAM_DIR / "drop_l2_8899"
 STRICT = PARAM_DIR / "rx_ipv4_only"
-ROUTER = "192.168.23.100"
+ROUTER = os.environ.get("K1C_TEST_GATEWAY_IP", "")
 IP = "/opt/sbin/ip"
 CYCLE = [
     ("A1 STOCK-LIKE", 0, 0),
@@ -65,6 +65,8 @@ def stats():
 
 def assert_stock_preflight(expected_hash):
     say("=== PRECHECK ===")
+    if not ROUTER:
+        raise RuntimeError("set K1C_TEST_GATEWAY_IP before running")
     if os.geteuid() != 0 or os.uname().release != "4.4.94":
         raise RuntimeError("must run as root on K1C Linux 4.4.94")
     if not CANDIDATE.is_file():
@@ -87,8 +89,8 @@ def assert_stock_preflight(expected_hash):
 
     addr = invoke([IP, "-4", "addr", "show", "wlan0"], quiet=True)
     route = invoke([IP, "-4", "route"], quiet=True)
-    if "192.168.23.169/" not in addr:
-        raise RuntimeError("Wi-Fi 192.168.23.169 is missing")
+    if not re.search(r"\binet\s+(?:\d{1,3}\.){3}\d{1,3}/", addr):
+        raise RuntimeError("Wi-Fi IPv4 address is missing")
     if not re.search(r"^default .* dev wlan0\b", route, re.M):
         raise RuntimeError("Wi-Fi default fallback route is missing")
 
