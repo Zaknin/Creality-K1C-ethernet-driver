@@ -1,5 +1,20 @@
 # Release History
 
+## v1.0.4
+
+Repairs the v1.0.3 runtime startup SHA-256 mismatch and adds fail-safe
+boot-hook staging, existing-install refusal, installer failure simulations,
+reproducible archives and a fail-closed source-release privacy check.
+The existing MIPS module binaries are unchanged. A guarded upgrade, reboot,
+USB DHCP and Wi-Fi failover/failback passed on one supported K1C; physical
+clean-install and forced-failure rollback were not tested. See
+[release notes](RELEASE-NOTES-v1.0.4.md),
+[installation guide](INSTALL-v1.0.4.md), and
+[hardware acceptance](HARDWARE-ACCEPTANCE-v1.0.4.md).
+
+The published v1.0.3 release remains immutable and contains a known startup
+hash mismatch. Do not recommend it for new installs.
+
 ## v1.0.3
 
 Adds two independently switchable CDC-NCM RX policies: 0x8899 filtering ON by default, and opt-in strict IPv4-oriented allowlist OFF by default. The boot/DHCP/Wi-Fi scripts remain unchanged from v1.0.2. The new CDC-NCM module was validated by repeated hardware A/B/C tests and watchdog rollback; a complete package upgrade/reboot regression has not been separately qualified.
