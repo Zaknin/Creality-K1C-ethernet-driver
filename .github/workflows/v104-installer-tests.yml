@@ -1,0 +1,31 @@
+name: v1.0.4 runtime integrity and installer regression
+
+on:
+  push:
+    branches:
+      - fix/v1.0.4-installer-integrity
+    paths:
+      - install.sh
+      - package/**
+      - tests/test_v104_installer_integrity.py
+      - .github/workflows/v104-installer-tests.yml
+  pull_request:
+    paths:
+      - install.sh
+      - package/**
+      - tests/test_v104_installer_integrity.py
+      - .github/workflows/v104-installer-tests.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify all package hashes and simulated installation failure modes
+        run: python3 tests/test_v104_installer_integrity.py
+      - name: Verify CDC-NCM RX filter regression
+        run: python3 tests/test_cdc_ncm_8899_filter.py
