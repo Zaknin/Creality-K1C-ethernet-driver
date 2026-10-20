@@ -1,0 +1,30 @@
+name: v1.0.5 privacy-safe reissue CI (no publication)
+on:
+  push:
+    branches: [privacy/v1.0.5-release]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installer and CDC-NCM regression
+        run: |
+          python3 tests/test_v105_installer_integrity.py
+          python3 tests/test_cdc_ncm_8899_filter.py
+      - name: Deterministic archive assembly with privacy gate
+        run: |
+          set -euo pipefail
+          python3 tools/assemble-v1.0.5.py --out "$RUNNER_TEMP/v105"
+          (cd "$RUNNER_TEMP/v105" && sha256sum -c SHA256SUMS)
+          python3 tests/test_v105_release_archives.py "$RUNNER_TEMP/v105"
+          python3 tools/assemble-v1.0.5.py --out "$RUNNER_TEMP/repeat"
+          cmp "$RUNNER_TEMP/v105/SHA256SUMS" "$RUNNER_TEMP/repeat/SHA256SUMS"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: k1c-v1.0.5-prepublication-only
+          path: ${{ runner.temp }}/v105/*
+          retention-days: 7

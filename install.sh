@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-VERSION=1.0.4
+VERSION=1.0.5
 EXPECTED_KERNEL=4.4.94
 DEFAULT_INSTALL_DIR=/usr/data/k1c-usb-ethernet/vendor-native-known-good
 BOOT_HOOK="${BOOT_HOOK:-/etc/init.d/S46usb_ethernet_primary}"
