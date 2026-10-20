@@ -1,9 +1,11 @@
 #!/bin/sh
 
 PACKAGE_DIR=/usr/data/k1c-usb-ethernet/vendor-native-known-good
-LOG_FILE="$PACKAGE_DIR/primary-ethernet-boot.log"
+. "$PACKAGE_DIR/runtime-logging.sh"
+k1c_setup_log "primary-ethernet-boot.log" || exit 1
 
 log() {
+  k1c_trim_log
   printf '%s boot-primary[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$$" "$*" >> "$LOG_FILE"
 }
 

@@ -3,7 +3,8 @@ set -u
 
 PACKAGE_DIR="${PACKAGE_DIR:-$(CDPATH= cd "$(dirname "$0")" && pwd)}"
 STATE_DIR="${STATE_DIR:-$PACKAGE_DIR/state}"
-LOG_FILE="${LOG_FILE:-$PACKAGE_DIR/primary-ethernet.log}"
+. "$PACKAGE_DIR/runtime-logging.sh"
+k1c_setup_log "primary-ethernet.log" || exit 1
 UDHCPC_SCRIPT="${UDHCPC_SCRIPT:-$PACKAGE_DIR/usb0-udhcpc-script.sh}"
 MONITOR_INTERVAL="${MONITOR_INTERVAL:-3}"
 MONITOR_ONCE="${MONITOR_ONCE:-0}"
@@ -99,6 +100,7 @@ run_once() {
 
 route_log "monitor started interval=${MONITOR_INTERVAL}s once=$MONITOR_ONCE"
 while :; do
+  k1c_trim_log
   run_once
   rc=$?
   [ "$MONITOR_ONCE" = "1" ] && exit "$rc"

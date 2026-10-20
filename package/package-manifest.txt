@@ -1,5 +1,5 @@
 package=k1c-usb-ethernet
-version=1.0.5
+version=1.0.6
 install_location=/usr/data/k1c-usb-ethernet/vendor-native-known-good
 boot_hook=/etc/init.d/S46usb_ethernet_primary
 expected_kernel=4.4.94
@@ -33,3 +33,7 @@ overall_release_verdict=V1_0_5_VERSION_ONLY_REISSUE_CI_VERIFICATION_REQUIRED
 rx_filter_drop_l2_8899_default=Y
 rx_filter_ipv4_only_default=N
 rx_filter_hardware_ab_validation=PASS_2026-10-13
+boot_hook_installation_default=copy
+boot_hook_symlink_experimental=yes
+runtime_log_default=/run/k1c-usb-ethernet
+runtime_log_limit_soft_bytes=262144

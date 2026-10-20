@@ -3,11 +3,13 @@ set -u
 
 PACKAGE_DIR="${PACKAGE_DIR:-$(CDPATH= cd "$(dirname "$0")" && pwd)}"
 STATE_DIR="${STATE_DIR:-$PACKAGE_DIR/state}"
-LOG_FILE="${LOG_FILE:-$PACKAGE_DIR/primary-ethernet.log}"
+. "$PACKAGE_DIR/runtime-logging.sh"
+k1c_setup_log "primary-ethernet.log" || exit 1
 STOP_TIMEOUT="${STOP_TIMEOUT:-5}"
 KILL_TIMEOUT="${KILL_TIMEOUT:-2}"
 
 log() {
+  k1c_trim_log
   printf '%s stop-primary[%s] %s\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     "$$" \

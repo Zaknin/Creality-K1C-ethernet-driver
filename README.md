@@ -1,7 +1,16 @@
-# Creality K1C USB Ethernet v1.0.5 — cleaned-history candidate
+# Creality K1C USB Ethernet — v1.0.6 development candidate
 
-This is a source/privacy-only successor to the qualified v1.0.4 runtime. The kernel modules and network routing/monitor scripts are byte-identical to v1.0.4; installer and package metadata now identify v1.0.5. The 2023-generation K1C, kernel 4.4.94, MIPS32_R2, ASIX CDC-NCM 0b95:1790 scope is unchanged.
+**NOT RELEASED.** The latest published, supported package is [v1.0.5](https://github.com/Zaknin/Creality-K1C-ethernet-driver/releases/tag/v1.0.5).
 
-**Release not yet published from this branch.** Verify the archive checksums and the exact GitHub release tag before recommending downloads. Previous v1.0.0–v1.0.4 releases may be retired for historical privacy reasons. Existing package users do not need a new firmware module for the version-only change.
+This experimental branch extends the privacy-safe v1.0.5 runtime without rebuilding or changing the K1C 4.4.94/MIPS32_R2 kernel modules. Supported hardware scope remains original-generation 2023 K1C and USB ID `0b95:1790`.
 
-See [installation](docs/INSTALL-v1.0.5.md), [release notes](docs/RELEASE-NOTES-v1.0.5.md) and [filter modes](docs/FILTER-MODES-v1.0.5.md).
+Planned v1.0.6 changes:
+
+- Move runtime, DHCP/route and boot-hook **logs** to volatile `/run/k1c-usb-ethernet/`, with per-file best-effort soft size limiting. Runtime state files still use `/usr/data`.
+- Add experimental `sh install.sh --enable-boot --boot-hook symlink`; the default `--enable-boot` continues to copy the hook until supported-printer cold boot validation is complete.
+- Protect foreign/modified or dangling symlinks from accidental removal on disable/uninstall.
+- Preserve Wi-Fi recovery, no in-place upgrades, installer rollback and exact module hashes.
+
+Read [development acceptance and limitations](docs/V106-DEVELOPMENT.md) before testing. **Do not deploy symlink startup on a printer without verified independent recovery access.** Full `/overlay` can reject the symlink too; boot ordering on actual firmware is not yet qualified.
+
+Two prior reports remain distinct: [installer/overlay Issue #2](https://github.com/Zaknin/Creality-K1C-ethernet-driver/issues/2) and [ASIX AX88179B notification Issue #1](https://github.com/Zaknin/Creality-K1C-ethernet-driver/issues/1). The notification spam issue is not addressed by these changes.

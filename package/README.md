@@ -1,7 +1,7 @@
 # Runtime Package
 
 This directory is the installed runtime payload for Creality K1C USB Ethernet
-v1.0.5. It contains the prebuilt production modules and the scripts needed to
+v1.0.6. It contains the prebuilt production modules and the scripts needed to
 install, start, stop, inspect, disable, and uninstall them.
 
 ## Supported Target
@@ -61,3 +61,8 @@ Uninstall:
 ```
 
 Keep Wi-Fi enabled until Ethernet and the fallback path are verified.
+
+## v1.0.6 candidate logging and boot-hook behavior
+
+Runtime logs default to /run/k1c-usb-ethernet (volatile). Set K1C_ALLOW_PERSISTENT_LOGS=1 and LOG_FILE to opt in to persistent logs. Each log has a best-effort 256 KiB soft limit.
+The default --enable-boot installation still copies the hook; test --enable-boot --boot-hook symlink only with independent recovery access. A full overlay may reject even the symlink, and boot ordering must be physically validated.

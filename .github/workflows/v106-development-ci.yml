@@ -1,0 +1,41 @@
+name: v1.0.6 volatile logs and symlink boot development CI
+on:
+  push:
+    branches: [feature/v1.0.6-ram-logs-symlink-boot]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package integrity and symlink/volatile logging simulations
+        run: |
+          set -euo pipefail
+          python3 tests/test_v106_installer_integrity.py
+          python3 tests/test_v106_ram_logs_symlink.py
+          python3 tests/test_cdc_ncm_8899_filter.py
+      - name: Re-run route, DHCP and legacy installer regressions
+        run: |
+          set -euo pipefail
+          bash tests/route-policy-regression.sh
+          bash tests/boot-dhcp-acquisition-regression.sh
+          bash tests/boot-stop-uninstall-regression.sh
+          bash tests/installer-compatibility-refusal.sh
+      - name: Assemble reproducible v1.0.6 QA archives (NOT PUBLISHED)
+        run: |
+          set -euo pipefail
+          python3 tools/assemble-v1.0.6.py --out "$RUNNER_TEMP/v106-a"
+          python3 tools/assemble-v1.0.6.py --out "$RUNNER_TEMP/v106-b"
+          cmp "$RUNNER_TEMP/v106-a/SHA256SUMS" "$RUNNER_TEMP/v106-b/SHA256SUMS"
+          (cd "$RUNNER_TEMP/v106-a" && sha256sum -c SHA256SUMS)
+          python3 tests/test_v106_release_archives.py "$RUNNER_TEMP/v106-a"
+          printf 'QA_CANDIDATE_ONLY_NOT_RELEASED\n'
+      - name: Store candidate artifacts temporarily (NOT a GitHub Release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: k1c-v1.0.6-qa-candidate-only
+          path: ${{ runner.temp }}/v106-a/*
+          retention-days: 7

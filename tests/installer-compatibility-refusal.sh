@@ -97,8 +97,17 @@ assert_installed "$TMP/dest with spaces" ""
   cd "$TMP"
   hook="$TMP/custom init/S46usb_ethernet_primary"
   mkdir -p "$(dirname "$hook")"
+  cp -R "$TMP/work" "$TMP/boot-default-test"
+  python3 - "$TMP/boot-default-test/install.sh" "$TMP/dest-hook" <<'PYEDIT'
+from pathlib import Path
+import sys
+p=Path(sys.argv[1]); txt=p.read_text()
+old='DEFAULT_INSTALL_DIR=/usr/data/k1c-usb-ethernet/vendor-native-known-good'
+assert txt.count(old)==1
+p.write_text(txt.replace(old,'DEFAULT_INSTALL_DIR='+sys.argv[2]))
+PYEDIT
   PATH="$TMP/bin:$PATH" FAKE_UNAME_R=4.4.94 BOOT_HOOK="$hook" \
-    run_expect_success custom_boot_hook "$SH" "$TMP/work/install.sh" --enable-boot --dest "$TMP/dest-hook"
+    run_expect_success custom_boot_hook "$SH" "$TMP/boot-default-test/install.sh" --enable-boot --dest "$TMP/dest-hook"
 )
 assert_installed "$TMP/dest-hook" "$TMP/custom init/S46usb_ethernet_primary"
 

@@ -3,7 +3,8 @@ set -u
 
 PACKAGE_DIR="${PACKAGE_DIR:-$(CDPATH= cd "$(dirname "$0")" && pwd)}"
 STATE_DIR="${STATE_DIR:-$PACKAGE_DIR/state}"
-LOG_FILE="${LOG_FILE:-$PACKAGE_DIR/primary-ethernet.log}"
+. "$PACKAGE_DIR/runtime-logging.sh"
+k1c_setup_log "primary-ethernet.log" || exit 1
 LOG_CONTEXT="usb0-udhcpc"
 
 . "$PACKAGE_DIR/primary-routing-lib.sh"

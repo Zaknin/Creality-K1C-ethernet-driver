@@ -2,10 +2,12 @@
 set -u
 
 PACKAGE_DIR="${PACKAGE_DIR:-$(CDPATH= cd "$(dirname "$0")" && pwd)}"
-LOG_FILE="${LOG_FILE:-$PACKAGE_DIR/usb-ethernet.log}"
+. "$PACKAGE_DIR/runtime-logging.sh"
+k1c_setup_log "usb-ethernet.log" || exit 1
 STATE_DIR="${STATE_DIR:-$PACKAGE_DIR/state}"
 
 log() {
+  k1c_trim_log
   printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$LOG_FILE"
 }
 

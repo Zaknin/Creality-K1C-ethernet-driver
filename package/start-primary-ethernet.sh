@@ -3,7 +3,8 @@ set -u
 
 PACKAGE_DIR="${PACKAGE_DIR:-$(CDPATH= cd "$(dirname "$0")" && pwd)}"
 STATE_DIR="${STATE_DIR:-$PACKAGE_DIR/state}"
-LOG_FILE="${LOG_FILE:-$PACKAGE_DIR/primary-ethernet.log}"
+. "$PACKAGE_DIR/runtime-logging.sh"
+k1c_setup_log "primary-ethernet.log" || exit 1
 UDHCPC_SCRIPT="$PACKAGE_DIR/usb0-udhcpc-script.sh"
 MONITOR_SCRIPT="$PACKAGE_DIR/usb0-route-monitor.sh"
 PID_FILE="$STATE_DIR/udhcpc-usb0.pid"
@@ -17,6 +18,7 @@ BOOT_DHCP_TRIES="${BOOT_DHCP_TRIES:-5}"
 mkdir -p "$STATE_DIR"
 
 log() {
+  k1c_trim_log
   printf '%s start-primary[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$$" "$*" | tee -a "$LOG_FILE"
 }
 

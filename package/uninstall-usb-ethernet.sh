@@ -28,7 +28,7 @@ esac
   exit 1
 }
 
-if [ -e "$BOOT_HOOK" ]; then
+if [ -e "$BOOT_HOOK" ] || [ -L "$BOOT_HOOK" ]; then
   echo "Uninstall stopped because boot hook remains: $BOOT_HOOK" >&2
   exit 1
 fi

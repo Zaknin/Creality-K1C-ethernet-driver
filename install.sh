@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-VERSION=1.0.5
+VERSION=1.0.6
 EXPECTED_KERNEL=4.4.94
 DEFAULT_INSTALL_DIR=/usr/data/k1c-usb-ethernet/vendor-native-known-good
 BOOT_HOOK="${BOOT_HOOK:-/etc/init.d/S46usb_ethernet_primary}"
@@ -10,15 +10,17 @@ PACKAGE_DIR="$SCRIPT_DIR/package"
 
 usage() {
   cat <<EOF
-Usage: sh install.sh [--enable-boot] [--dest DIR]
+Usage: sh install.sh [--enable-boot] [--boot-hook MODE] [--dest DIR]
 
 Installs the v$VERSION USB Ethernet runtime for the supported K1C ABI.
 Without --enable-boot, boot integration is left unchanged. A successful
 --enable-boot installation adds /etc/init.d/S46usb_ethernet_primary.
+MODE: copy (tested legacy default) or symlink (EXPERIMENTAL: requires cold-boot validation).
 EOF
 }
 
 enable_boot=0
+boot_hook_mode=copy
 dest="$DEFAULT_INSTALL_DIR"
 
 while [ "$#" -gt 0 ]; do
@@ -26,6 +28,11 @@ while [ "$#" -gt 0 ]; do
     --enable-boot)
       enable_boot=1
       shift
+      ;;
+    --boot-hook)
+      [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+      boot_hook_mode="$2"
+      shift 2
       ;;
     --dest)
       [ "$#" -ge 2 ] || { usage >&2; exit 2; }
@@ -69,6 +76,14 @@ esac
 [ ! -e "$dest" ] && [ ! -L "$dest" ] ||
   fail "destination exists at $dest; preserve any logs, uninstall the old package or inspect an earlier partial install before retrying"
 
+case "$boot_hook_mode" in
+  copy|symlink) ;;
+  *) fail "unknown boot hook mode: $boot_hook_mode" ;;
+esac
+if [ "$boot_hook_mode" = symlink ] && [ "$enable_boot" -ne 1 ]; then
+  fail "--boot-hook symlink requires --enable-boot"
+fi
+
 if [ "$enable_boot" -eq 1 ]; then
   [ "$dest" = "$DEFAULT_INSTALL_DIR" ] ||
     fail "--enable-boot requires default install path; the boot hook uses $DEFAULT_INSTALL_DIR"
@@ -107,12 +122,19 @@ if [ "$enable_boot" -eq 1 ]; then
   boot_stage="$BOOT_HOOK.k1c-pending-$$"
   [ ! -e "$boot_stage" ] && [ ! -L "$boot_stage" ] ||
     fail "boot staging path already exists: $boot_stage"
-  # Writing the actual hook (not a zero-byte probe) detects a full
-  # overlay filesystem. Failure leaves the old installation untouched.
-  cp "$PACKAGE_DIR/S46usb_ethernet_primary" "$boot_stage" ||
-    fail "cannot stage boot hook in $(dirname "$BOOT_HOOK") (check overlay free space); no package was installed. Free overlay space safely or install without --enable-boot"
-  chmod 755 "$boot_stage" ||
-    fail "cannot set boot hook permissions on $boot_stage"
+  if [ "$boot_hook_mode" = symlink ]; then
+    # Stage a dangling link before modifying /usr/data, then atomically
+    # rename it only after package verification. Even a symlink needs
+    # directory metadata/inode space on /overlay: ENOSPC remains possible.
+    ln -s "$dest/S46usb_ethernet_primary" "$boot_stage" ||
+      fail "cannot create boot symlink in $(dirname "$BOOT_HOOK") (overlay may be full); package not installed"
+  else
+    # Tested legacy behavior: stage the full file to detect overlay ENOSPC.
+    cp "$PACKAGE_DIR/S46usb_ethernet_primary" "$boot_stage" ||
+      fail "cannot stage boot hook in $(dirname "$BOOT_HOOK") (check overlay free space); no package was installed. Free overlay space safely or install without --enable-boot"
+    chmod 755 "$boot_stage" ||
+      fail "cannot set boot hook permissions on $boot_stage"
+  fi
 fi
 
 mkdir -p "$dest" || fail "cannot create installation directory $dest"
@@ -151,7 +173,7 @@ printf 'k1c-usb-ethernet v%s package-owned install tree\n' "$VERSION" > "$dest/.
 
 trap - 0
 if [ "$enable_boot" -eq 1 ]; then
-  echo "install: boot integration enabled at $BOOT_HOOK"
+  echo "install: boot integration enabled ($boot_hook_mode) at $BOOT_HOOK"
 else
   echo "install: boot integration not enabled (manual start still supported)"
 fi

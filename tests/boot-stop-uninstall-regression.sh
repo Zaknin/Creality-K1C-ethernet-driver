@@ -24,7 +24,22 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "$TMP/bin" "$TMP/work" "$TMP/init.d"
+# Isolate runtime logs inside this test run. On WSL and CI the test is
+# unprivileged and must not attempt to create /run/k1c-usb-ethernet.
+K1C_LOG_DIR="$TMP/volatile-logs"
+export K1C_LOG_DIR
 cp -R "$ROOT"/. "$TMP/work/"
+# Package boot integration intentionally requires the default destination;
+# rewrite that constant ONLY in the disposable isolated test checkout.
+python3 - "$TMP/work/install.sh" "$TMP/install" <<'PYEDIT'
+from pathlib import Path
+import sys
+p=Path(sys.argv[1]); value=sys.argv[2]
+s=p.read_text()
+needle='DEFAULT_INSTALL_DIR=/usr/data/k1c-usb-ethernet/vendor-native-known-good'
+assert s.count(needle)==1
+p.write_text(s.replace(needle,'DEFAULT_INSTALL_DIR='+value))
+PYEDIT
 
 cat > "$TMP/bin/uname" <<'EOS'
 #!/bin/sh

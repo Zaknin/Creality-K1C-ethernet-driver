@@ -12,7 +12,7 @@ SYS_CLASS_NET="${SYS_CLASS_NET:-/sys/class/net}"
 RESOLV_CONF="${RESOLV_CONF:-/etc/resolv.conf}"
 LOG_CONTEXT="${LOG_CONTEXT:-routing}"
 STATE_DIR="${STATE_DIR:-${PACKAGE_DIR:-.}/state}"
-LOG_FILE="${LOG_FILE:-${PACKAGE_DIR:-.}/primary-ethernet.log}"
+LOG_FILE="${LOG_FILE:-/run/k1c-usb-ethernet/primary-ethernet.log}"
 ROUTE_LOCK_DIR="${ROUTE_LOCK_DIR:-$STATE_DIR/route.lock}"
 UDHCPC_SCRIPT="${UDHCPC_SCRIPT:-${PACKAGE_DIR:-.}/usb0-udhcpc-script.sh}"
 UDHCPC_PID_FILE="${UDHCPC_PID_FILE:-$STATE_DIR/udhcpc-usb0.pid}"
@@ -24,6 +24,7 @@ DHCP_STOP_WAIT="${DHCP_STOP_WAIT:-5}"
 DHCP_REPLACEMENT_TIMEOUT="${DHCP_REPLACEMENT_TIMEOUT:-20}"
 
 route_log() {
+  if command -v k1c_trim_log >/dev/null 2>&1; then k1c_trim_log; fi
   printf '%s %s[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$LOG_CONTEXT" "$$" "$*" >> "$LOG_FILE"
 }
 

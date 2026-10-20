@@ -3,7 +3,8 @@ set -u
 
 PACKAGE_DIR="${PACKAGE_DIR:-$(CDPATH= cd "$(dirname "$0")" && pwd)}"
 MODULE_DIR="$PACKAGE_DIR/modules"
-LOG_FILE="${LOG_FILE:-$PACKAGE_DIR/usb-ethernet.log}"
+. "$PACKAGE_DIR/runtime-logging.sh"
+k1c_setup_log "usb-ethernet.log" || exit 1
 EXPECTED_KERNEL="4.4.94"
 
 MII_HASH="a66d280aa643319a848260e8ade6373415a61e1e07c73e16dacd33f75ac497d8"
@@ -11,6 +12,7 @@ USBNET_HASH="8a582cb3f480f86126dacc2b7255b45efcb4fb58d591007e6ba653bee08da85d"
 CDC_NCM_HASH="f12a6cc8faf904a72cb44e21e6ec520efe24b37ae9999a40a1ca0183517d7271"
 
 log() {
+  k1c_trim_log
   printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$LOG_FILE"
 }
 
