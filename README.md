@@ -1,5 +1,17 @@
 # Creality K1C USB Ethernet Driver
 
+> **Known installation defect in v1.0.3 (2026-10-20):** Although its
+> archives and new CDC-NCM module pass SHA-256 checks, the shipped
+> `start-usb-ethernet.sh` still expects the **v1.0.2** module hash.
+> Startup fails with `hash mismatch`. On printers with no free
+> `/overlay` space, `install.sh --enable-boot` can also fail to
+> write the boot hook and leave a partial installation. **Hold off on
+> new v1.0.3 installations.** A tested, unpublished
+> [v1.0.4 fix candidate](https://github.com/Zaknin/Creality-K1C-ethernet-driver/pull/4)
+> addresses the hash pin and clean failure behavior; physical
+> reboot/upgrade qualification is still pending. See
+> [Issue #2](https://github.com/Zaknin/Creality-K1C-ethernet-driver/issues/2).
+>
 Unofficial USB Ethernet connectivity for the **2023-generation Creality K1C**
 with Linux `4.4.94` and a compatible ASIX USB adapter (`0b95:1790`).
 The 2025 K1C revision has **not** been validated.
