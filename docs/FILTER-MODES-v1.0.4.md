@@ -47,9 +47,11 @@ persisted after a module reload or reboot.
 
 The laboratory A/B/C driver tests in
 [HARDWARE-VALIDATION-2026-10-13.md](HARDWARE-VALIDATION-2026-10-13.md)
-apply to the identical binary, not to the newly revised v1.0.4
-installer. A full v1.0.4 install, reboot and recovery qualification
-is still pending.
+apply to the identical binary. On one supported 2023-generation K1C,
+v1.0.4 passed a guarded upgrade, reboot autostart, DHCP, carrier-loss
+fallback and link-up recovery. Physical clean-install and forced-failure
+rollback were not tested. See
+[HARDWARE-ACCEPTANCE-v1.0.4.md](HARDWARE-ACCEPTANCE-v1.0.4.md).
 
 ## Changes relative to v1.0.3
 
