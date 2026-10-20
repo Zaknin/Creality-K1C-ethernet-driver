@@ -3,12 +3,10 @@
 **Candidate:** `cdc_ncm.ko` SHA-256
 `f12a6cc8faf904a72cb44e21e6ec520efe24b37ae9999a40a1ca0183517d7271`.
 
-**Setup:** Forge-K1C (2023 K1C), Linux 4.4.94, ASIX
-0b95:1790, usb0 192.168.23.92/24, gateway 192.168.23.100,
-Wi-Fi backup 192.168.23.169. Tests performed while using the
-experimentally built dual-toggle cdc_ncm kernel module. The runtime
-start/stop scripts and original on-disk modules came from the
-known-good v1.0.2 runtime.
+**Setup:** one 2023-generation K1C, Linux 4.4.94, ASIX USB ID
+`0b95:1790`, USB Ethernet with DHCP and Wi-Fi fallback. Tests used the
+experimentally built dual-toggle CDC-NCM module and the
+known-good v1.0.2 runtime start/stop scripts.
 
 ## Per-window results
 
