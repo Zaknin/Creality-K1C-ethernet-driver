@@ -13,9 +13,8 @@ these are historical experimental test instructions.
 
 ## Evidence from 2023 K1C
 
-The directly attached switch at 192.168.23.94 has
-MAC `18:d6:c7:9a:88:bf`. The K1C's Ethernet capture saw broadcast
-EtherType `0x8899` from that MAC at ~0.5 frames/second.
+A network device generated broadcast EtherType `0x8899` traffic,
+observed by the K1C at ~0.5 frames/second.
 
 On the original driver, a 30s window produced +16 `rx_dropped`;
 registering an AF_PACKET listener for only `0x8899` produced +1
@@ -105,7 +104,7 @@ No change to normal connectivity is expected, but must be tested.
 **Status: candidate RX behavior validated on one real K1C; not yet
 qualified for a stable release.**
 
-Ubuntu `whisper-vulkan` built the branch using the prepared X2000
+An Ubuntu build host built the branch using the prepared X2000
 Linux 4.4.94 SDK; native RX regression passed and module verification
 passed. Built `cdc_ncm.ko` SHA-256:
 
@@ -115,7 +114,7 @@ passed. Built `cdc_ncm.ko` SHA-256:
 
 It loaded on the physical 2023 K1C with module size 17255
 (original: 17148); `drop_l2_8899=Y`; Ethernet acquired
-`192.168.23.92` with primary default route metric 50.
+a DHCP address with primary default route metric 50.
 
 A/B test on the **same loaded module**, toggling only the runtime
 parameter, each interval 25 seconds:
@@ -131,7 +130,7 @@ Combined: **1 drop ON vs 44 drops OFF**, for equal total observation
 time of 50 seconds each. These are descriptive results, not a
 throughput or packet-loss benchmark.
 
-A subsequent `ping -I usb0 -c 10 -W 2 192.168.23.100` passed
+A subsequent `ping -I usb0 -c 10 -W 2 GATEWAY_IP` passed
 10/10 (0% ICMP packet loss), RTT min/avg/max
 2.130/2.213/2.376 ms. The filter remained enabled (`Y`) and
 link state was `UP,LOWER_UP` after the test. At this later
