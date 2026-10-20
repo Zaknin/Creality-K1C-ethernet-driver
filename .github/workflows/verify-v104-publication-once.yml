@@ -1,0 +1,60 @@
+name: Verify published v1.0.4 release files
+
+on:
+  push:
+    branches:
+      - release/v1.0.3-rc1
+    paths:
+      - .github/workflows/verify-v104-publication-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify public release and all four downloadable files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/download"
+          gh release view v1.0.4 --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,isPrerelease,assets \
+            --jq '[.tagName == "v1.0.4", .isDraft == false, .isPrerelease == false, (.assets | length) == 4] | all' | grep -qx true
+          gh release download v1.0.4 --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/download"
+          cd "$RUNNER_TEMP/download"
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 4
+          sha256sum -c SHA256SUMS
+          cat > "$RUNNER_TEMP/expected-v104-sha256" <<'EOF'
+          30d471ffe5532c0adbed8e1e589e67e76357fc91512df4384838610a3c8630e6  k1c-usb-ethernet-v1.0.4-runtime.tar.gz
+          4291c924b1c5a50358ce4543fe93317f940fc7b0a0812c243a71b727c9955674  k1c-usb-ethernet-v1.0.4-runtime.zip
+          1885bf63f596d4047f457844b5ace95249cd172d0c5a12b830b48107cfa1fe1e  k1c-usb-ethernet-v1.0.4-source.tar.gz
+          EOF
+          cmp SHA256SUMS "$RUNNER_TEMP/expected-v104-sha256"
+          echo 'PUBLIC v1.0.4 RELEASE ASSETS VERIFIED — PASS'
+
+      - name: Record publication verification in release branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > docs/RELEASE-VERIFICATION-v1.0.4.md <<'EOF'
+          # v1.0.4 published asset verification
+
+          The published GitHub Release v1.0.4 contains exactly four downloadable
+          assets: runtime TAR, runtime ZIP, source TAR, and SHA256SUMS.
+
+          GitHub Actions independently downloaded all four public assets, verified
+          the three SHA-256 checksums, and matched the exact prepublication
+          acceptance checksums. This is a publication/asset integrity check,
+          not an additional physical hardware test.
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/RELEASE-VERIFICATION-v1.0.4.md
+          git commit -m "docs(release): record independently downloaded v1.0.4 asset verification"
+          git push origin "HEAD:refs/heads/release/v1.0.3-rc1"
