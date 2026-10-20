@@ -83,6 +83,27 @@ def manifest_hashes(pkg):
             raise RuntimeError("package SHA256SUMS self-check failed")
 
 
+def validate_public_source_records(source_root):
+    """Fail closed if release source includes private addresses or MACs.
+
+    Repository documents and hardware tests must already be anonymized before
+    packaging. Never silently anonymize an archive while leaking the same
+    values from the public Git tree.
+    """
+    private_ipv4 = re.compile(
+        rb"(?<![0-9.])(?:10\.(?:[0-9]{1,3}\.){2}[0-9]{1,3}|"
+        rb"192\.168\.(?:[0-9]{1,3}\.)[0-9]{1,3}|"
+        rb"172\.(?:1[6-9]|2[0-9]|3[01])\.(?:[0-9]{1,3}\.)[0-9]{1,3})(?![0-9.])")
+    mac_address = re.compile(rb"\b[0-9a-f]{2}(?::[0-9a-f]{2}){5}\b", re.I)
+    for path in sorted(source_root.rglob("*")):
+        if not path.is_file():
+            continue
+        payload = path.read_bytes()
+        if private_ipv4.search(payload) or mac_address.search(payload):
+            raise RuntimeError("private address/MAC in source payload: " +
+                               path.relative_to(source_root).as_posix())
+
+
 def stage_runtime(work, candidate):
     root = work / "k1c-usb-ethernet-v{}-runtime".format(VERSION)
     root.mkdir()
@@ -156,6 +177,7 @@ def stage_source(work):
         "\n".join("{}  modules/{}".format(EXPECTED[n], n)
                   for n in ("mii.ko", "usbnet.ko", "cdc_ncm.ko")) + "\n"
     )
+    validate_public_source_records(root)
     return root
 
 
