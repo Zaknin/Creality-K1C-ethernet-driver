@@ -1,0 +1,60 @@
+name: Annotate published v1.0.3 known installation defect
+
+on:
+  push:
+    branches: [fix/v1.0.4-installer-integrity]
+    paths: [.github/workflows/annotate-v103-known-install-defect.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  annotate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check release identity and prepend non-destructive warning
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/releases/412071396" > "$RUNNER_TEMP/release.json"
+          python3 - "$RUNNER_TEMP/release.json" "$RUNNER_TEMP/body.json" <<'PY'
+          import json, pathlib, sys
+          data=json.loads(pathlib.Path(sys.argv[1]).read_text())
+          assert data["id"]==412071396
+          assert data["tag_name"]=="v1.0.3" and data["draft"] is False
+          expected={
+            "k1c-usb-ethernet-v1.0.3-runtime.tar.gz": "sha256:791e0328a67d63a0bc1f1351b1066a47e0b001b4753af8c94902720ad5634b19",
+            "k1c-usb-ethernet-v1.0.3-runtime.zip": "sha256:387c8b4b0e388bb3f2f6bb8b4ab91c74eb3aea470f214fd8d3dfcd7e9ac21d75",
+            "k1c-usb-ethernet-v1.0.3-source.tar.gz": "sha256:d94aa9045df1cf006458c0ba628f586b679d826c26956dd696a57f05a5a492e2",
+            "SHA256SUMS": "sha256:a4b70b5e6ffe76b57c305ba8baeb35c2f99d886066be0eea349391055f083cfd"
+          }
+          assert {a["name"]:a.get("digest") for a in data["assets"]} == expected
+          marker="## Known installation defect in v1.0.3 (2026-10-20)"
+          notice="""## Known installation defect in v1.0.3 (2026-10-20)
+
+          **New installations are not recommended until v1.0.4 is physically qualified.** The v1.0.3 runtime archives contain the correct CDC-NCM module (hash `f12a6cc8...`), but `start-usb-ethernet.sh` mistakenly expects the old v1.0.2 hash, causing `hash mismatch` during normal startup. In addition, `install.sh --enable-boot` can fail to copy the init script when the printer root `/overlay` filesystem is full, potentially leaving a partial installation. Archive SHA-256 checks alone cannot detect this runtime mismatch.
+
+          [Issue #2](https://github.com/Zaknin/Creality-K1C-ethernet-driver/issues/2) | [v1.0.4 repair draft PR](https://github.com/Zaknin/Creality-K1C-ethernet-driver/pull/4).
+
+          The published v1.0.3 tag and its four assets remain **unchanged**; the correction will have a separate version number. Do not delete arbitrary files from the printer overlay or update firmware merely to work around this error.
+
+          ---
+
+          """
+          current=data.get("body") or ""
+          if marker in current:
+              print("NOTICE ALREADY PRESENT — no modification")
+              pathlib.Path(sys.argv[2]).write_text("")
+          else:
+              pathlib.Path(sys.argv[2]).write_text(json.dumps({"body":notice+current}))
+          PY
+          if [ -s "$RUNNER_TEMP/body.json" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/412071396" \
+              --input "$RUNNER_TEMP/body.json" --jq .html_url
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/releases/412071396" --jq .body |
+            grep -F '## Known installation defect in v1.0.3 (2026-10-20)'
+          echo 'KNOWN DEFECT NOTICE: VERIFIED'

@@ -1,0 +1,50 @@
+name: v1.0.4 release-candidate integrity and installer regression
+
+on:
+  push:
+    branches:
+      - fix/v1.0.4-installer-integrity
+  pull_request:
+    paths:
+      - install.sh
+      - package/**
+      - tools/assemble-v1.0.4.py
+      - tests/test_v104_*.py
+      - docs/FILTER-MODES-v1.0.4.md
+      - .github/workflows/v104-installer-tests.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify all package hashes and simulated installer failure modes
+        run: python3 tests/test_v104_installer_integrity.py
+
+      - name: Verify CDC-NCM RX filter regression
+        run: python3 tests/test_cdc_ncm_8899_filter.py
+
+      - name: Assemble v1.0.4 candidate archives, not a GitHub Release
+        run: python3 tools/assemble-v1.0.4.py --out "$RUNNER_TEMP/candidate"
+
+      - name: Check archive payloads, manifests and SHA-256
+        run: |
+          set -euo pipefail
+          (cd "$RUNNER_TEMP/candidate" && sha256sum -c SHA256SUMS)
+          python3 tests/test_v104_release_archives.py "$RUNNER_TEMP/candidate"
+          python3 tools/assemble-v1.0.4.py --out "$RUNNER_TEMP/repeat"
+          cmp "$RUNNER_TEMP/candidate/SHA256SUMS" "$RUNNER_TEMP/repeat/SHA256SUMS"
+          echo 'REPRODUCIBLE ARCHIVES: PASS'
+
+      - name: Attach internal QA candidate (not published as Release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: k1c-v1.0.4-rc-NOT-RELEASED
+          path: ${{ runner.temp }}/candidate/*
+          if-no-files-found: error
+          retention-days: 7
